@@ -1,7 +1,7 @@
 # ROADMAP
 
 ## Phase 1 — Shared repository foundation
-- [x] Separate iOS / Windows / shared code
+- [x] Separate iOS / Android / shared code
 - [x] Root Codex instructions
 - [x] Push repository to GitHub
 - [ ] Clone on Mac
@@ -16,8 +16,9 @@
 - [ ] Coolant
 - [ ] ECU Voltage
 
-## Phase 3 — Windows
-- [ ] .NET/WPF project
+## Phase 3 — Android
+- [ ] Create Android Studio project on Windows
+- [ ] Kotlin + Jetpack Compose foundation
 - [ ] BLE scan/connect
 - [ ] OBD transport
 - [ ] shared PID decoder parity
@@ -45,4 +46,5 @@
 - [ ] trip sessions
 - [ ] charts
 - [ ] GPS/map
-- [ ] CarPlay feasibility
+- [ ] CarPlay feasibility for iOS
+- [ ] Android Auto feasibility for Android
