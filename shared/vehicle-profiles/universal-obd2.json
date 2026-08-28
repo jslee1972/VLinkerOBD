@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "profileId": "universal-obd2",
+  "displayName": "Universal OBD-II",
+  "pids": [
+    {"request": "010D", "field": "speedKPH", "unit": "km/h", "formula": "A"},
+    {"request": "010C", "field": "rpm", "unit": "rpm", "formula": "((A*256)+B)/4"},
+    {"request": "0105", "field": "coolantTempC", "unit": "degC", "formula": "A-40"},
+    {"request": "0104", "field": "engineLoadPercent", "unit": "%", "formula": "A*100/255"},
+    {"request": "0111", "field": "throttlePercent", "unit": "%", "formula": "A*100/255"},
+    {"request": "0142", "field": "controlModuleVoltage", "unit": "V", "formula": "((A*256)+B)/1000"}
+  ]
+}
