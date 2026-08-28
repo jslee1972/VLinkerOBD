@@ -8,12 +8,12 @@ Keep each OS implementation in a separate directory:
 
 ```text
 apps/ios/
-apps/windows/
+apps/android/
 shared/
 docs/
 ```
 
-Do not mix Swift/iOS source files with C#/Windows source files.
+Do not mix Swift/iOS source files with Kotlin/Android source files.
 
 ## Language
 - Code identifiers: English
@@ -43,12 +43,13 @@ iOS:
 - Swift
 - SwiftUI
 - CoreBluetooth
+- Built and tested on macOS/Xcode
 
-Windows:
-- C#
-- .NET
-- WPF preferred
-- Windows BLE APIs
+Android:
+- Kotlin preferred
+- Jetpack Compose preferred
+- Android Bluetooth LE APIs
+- Built and tested on Windows with Android Studio
 
 ### Shared
 Keep portable data definitions under `shared/`:
@@ -59,7 +60,7 @@ Keep portable data definitions under `shared/`:
 - units
 - common terminology
 
-Do not attempt to directly share Swift or C# binary/source implementation unless explicitly needed.
+Do not attempt to directly share Swift or Kotlin platform implementation unless explicitly needed.
 
 ## OBD rules
 1. One ELM/STN command at a time.
@@ -76,7 +77,7 @@ Primary branch: `main`
 
 Recommended per-OS feature branches:
 - `ios/<feature>`
-- `windows/<feature>`
+- `android/<feature>`
 - `shared/<feature>`
 
 Before coding:
@@ -91,7 +92,7 @@ After coding:
 4. resolve conflicts if any
 5. push
 
-Never let Mac Codex and Windows Codex edit the same file at the same time unless coordinated.
+Never let Mac Codex and Windows Codex edit the same file at the same time unless coordinated. Mac Codex should primarily work under `apps/ios/`; Windows Codex should primarily work under `apps/android/`.
 
 ## Codex reporting
 After each task, report:
