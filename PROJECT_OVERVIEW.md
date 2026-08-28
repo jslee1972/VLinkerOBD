@@ -4,8 +4,8 @@
 
 建立跨平台車輛即時 Dashboard：
 
-- iOS App：SwiftUI + CoreBluetooth
-- Windows App：C#/.NET/WPF
+- iOS App：SwiftUI + CoreBluetooth，在 macOS / Xcode 開發
+- Android App：Kotlin + Jetpack Compose，在 Windows / Android Studio 開發
 - BLE：vLinker MC+ 等 OBD-II adapter
 - Standard OBD-II first
 - EV / Hybrid enhanced PID later
@@ -22,8 +22,8 @@ VLinkerOBD/
 ├── apps/
 │   ├── ios/
 │   │   └── VLinkerOBD/
-│   └── windows/
-│       └── VLinkerOBD.Windows/
+│   └── android/
+│       └── VLinkerOBD/
 ├── shared/
 │   ├── vehicle-profiles/
 │   └── protocol-docs/
@@ -41,6 +41,15 @@ Current prototype direction:
 - poll `010D`
 - parse vehicle speed
 - show raw response/log
+
+## Android direction
+
+Android 版與 iOS 版應維持相同的資料模型與 OBD 行為，但 BLE 與 UI 使用 Android 原生實作：
+
+- Kotlin
+- Jetpack Compose
+- Android Bluetooth LE APIs
+- Android Studio on Windows
 
 ## Shared data target
 
