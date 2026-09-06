@@ -1,13 +1,23 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "profileId": "universal-obd2",
   "displayName": "Universal OBD-II",
+  "displayNameZh": "通用 OBD-II",
   "pids": [
     {"request": "010D", "field": "speedKPH", "unit": "km/h", "formula": "A"},
     {"request": "010C", "field": "rpm", "unit": "rpm", "formula": "((A*256)+B)/4"},
     {"request": "0105", "field": "coolantTempC", "unit": "degC", "formula": "A-40"},
     {"request": "0104", "field": "engineLoadPercent", "unit": "%", "formula": "A*100/255"},
     {"request": "0111", "field": "throttlePercent", "unit": "%", "formula": "A*100/255"},
-    {"request": "0142", "field": "controlModuleVoltage", "unit": "V", "formula": "((A*256)+B)/1000"}
+    {"request": "0142", "field": "controlModuleVoltage", "unit": "V", "formula": "((A*256)+B)/1000"},
+    {"request": "010F", "field": "intakeAirTempC", "unit": "degC", "formula": "A-40"},
+    {"request": "0110", "field": "mafGramsPerSec", "unit": "g/s", "formula": "((A*256)+B)/100"},
+    {"request": "010B", "field": "intakeManifoldPressureKPA", "unit": "kPa", "formula": "A"},
+    {"request": "010A", "field": "fuelPressureKPA", "unit": "kPa", "formula": "A*3"},
+    {"request": "0133", "field": "barometricPressureKPA", "unit": "kPa", "formula": "A"},
+    {"request": "012F", "field": "fuelLevelPercent", "unit": "%", "formula": "A*100/255"},
+    {"request": "0146", "field": "ambientAirTempC", "unit": "degC", "formula": "A-40"},
+    {"request": "015C", "field": "engineOilTempC", "unit": "degC", "formula": "A-40"},
+    {"request": "011F", "field": "runtimeSinceStartSec", "unit": "s", "formula": "(A*256)+B"}
   ]
 }
