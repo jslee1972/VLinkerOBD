@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 3,
+  "profileId": "ford",
+  "brand": "Ford",
+  "displayNameZh": "Ford 私有 PID",
+  "notes": "取自 OBDb/Ford-Fiesta 社群維護的 signalset，格式一致且經多車實測，標記 verified: community。",
+  "pids": [
+    {
+      "request": "22404C",
+      "field": "odometerKM",
+      "unit": "km",
+      "ecuHeader": "720",
+      "ecuReceiveFilter": "728",
+      "bitField": {"bitIndex": 0, "bitLength": 24, "divisor": 10, "max": 1677721},
+      "verified": "community"
+    },
+    {
+      "request": "2261A5",
+      "field": "tirePressureWarning",
+      "unit": "offon",
+      "ecuHeader": "720",
+      "ecuReceiveFilter": "728",
+      "bitField": {"bitIndex": 2, "bitLength": 1, "max": 1},
+      "verified": "community"
+    },
+    {
+      "request": "222813",
+      "field": "tireFrontLeftPSI",
+      "unit": "psi",
+      "ecuHeader": "726",
+      "ecuReceiveFilter": "72E",
+      "bitField": {"bitIndex": 0, "bitLength": 16, "divisor": 20, "max": 3276},
+      "verified": "community"
+    },
+    {
+      "request": "222814",
+      "field": "tireFrontRightPSI",
+      "unit": "psi",
+      "ecuHeader": "726",
+      "ecuReceiveFilter": "72E",
+      "bitField": {"bitIndex": 0, "bitLength": 16, "divisor": 20, "max": 3276},
+      "verified": "community"
+    },
+    {
+      "request": "222815",
+      "field": "tireRearRightPSI",
+      "unit": "psi",
+      "ecuHeader": "726",
+      "ecuReceiveFilter": "72E",
+      "bitField": {"bitIndex": 0, "bitLength": 16, "divisor": 20, "max": 3276},
+      "verified": "community"
+    },
+    {
+      "request": "222816",
+      "field": "tireRearLeftPSI",
+      "unit": "psi",
+      "ecuHeader": "726",
+      "ecuReceiveFilter": "72E",
+      "bitField": {"bitIndex": 0, "bitLength": 16, "divisor": 20, "max": 3276},
+      "verified": "community"
+    }
+  ]
+}

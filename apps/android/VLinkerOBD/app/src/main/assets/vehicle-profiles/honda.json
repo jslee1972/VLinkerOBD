@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 3,
+  "profileId": "honda",
+  "brand": "Honda",
+  "displayNameZh": "Honda 私有 PID",
+  "notes": "取自 OBDb/Honda-Civic 社群維護的 signalset（Hybrid 車型），格式一致且經多車實測，標記 verified: community。原始資料含多達 84 顆電池單體電壓，此檔只取一般儀表板會用到的代表性子集。",
+  "pids": [
+    {
+      "request": "22202A",
+      "field": "stateOfChargePercent",
+      "unit": "%",
+      "ecuHeader": "DA01",
+      "ecuReceiveFilter": "01",
+      "bitField": {"bitIndex": 400, "bitLength": 8, "max": 100},
+      "verified": "community"
+    },
+    {
+      "request": "22202A",
+      "field": "batteryVoltage",
+      "unit": "V",
+      "ecuHeader": "DA01",
+      "ecuReceiveFilter": "01",
+      "bitField": {"bitIndex": 488, "bitLength": 16, "divisor": 20, "max": 400},
+      "verified": "community"
+    },
+    {
+      "request": "22202A",
+      "field": "batteryCurrent",
+      "unit": "A",
+      "ecuHeader": "DA01",
+      "ecuReceiveFilter": "01",
+      "bitField": {"bitIndex": 456, "bitLength": 16, "divisor": 50, "signed": true, "min": -100, "max": 200},
+      "verified": "community"
+    },
+    {
+      "request": "22202C",
+      "field": "engineCoolantTemp1C",
+      "unit": "degC",
+      "ecuHeader": "DA10",
+      "ecuReceiveFilter": "10",
+      "bitField": {"bitIndex": 1608, "bitLength": 16, "divisor": 10, "signed": true, "min": -40, "max": 215},
+      "verified": "community"
+    },
+    {
+      "request": "22202C",
+      "field": "engineCoolantTemp2C",
+      "unit": "degC",
+      "ecuHeader": "DA10",
+      "ecuReceiveFilter": "10",
+      "bitField": {"bitIndex": 1624, "bitLength": 16, "divisor": 10, "signed": true, "min": -40, "max": 215},
+      "verified": "community"
+    },
+    {
+      "request": "222610",
+      "field": "generatorDutyPercent",
+      "unit": "%",
+      "ecuHeader": "DA10",
+      "ecuReceiveFilter": "10",
+      "bitField": {"bitIndex": 184, "bitLength": 8, "multiplier": 100, "divisor": 255, "max": 100},
+      "verified": "community"
+    },
+    {
+      "request": "222660",
+      "field": "odometerKM",
+      "unit": "km",
+      "ecuHeader": "DA10",
+      "ecuReceiveFilter": "10",
+      "bitField": {"bitIndex": 344, "bitLength": 24, "max": 16777215},
+      "verified": "community"
+    }
+  ]
+}

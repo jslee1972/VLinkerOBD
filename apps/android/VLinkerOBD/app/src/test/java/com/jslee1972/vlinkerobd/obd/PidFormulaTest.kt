@@ -1,0 +1,74 @@
+package com.jslee1972.vlinkerobd.obd
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Test
+
+class PidFormulaTest {
+
+    @Test
+    fun evaluatesSingleByteIdentity() {
+        assertEquals(40.0, PidFormula.evaluate("A", listOf(40)))
+    }
+
+    @Test
+    fun evaluatesRpmFormula() {
+        assertEquals(872.0, PidFormula.evaluate("((A*256)+B)/4", listOf(13, 160)))
+    }
+
+    @Test
+    fun evaluatesCoolantTempFormula() {
+        assertEquals(71.0, PidFormula.evaluate("A-40", listOf(111)))
+    }
+
+    @Test
+    fun evaluatesPercentFormula() {
+        assertEquals(50.0, PidFormula.evaluate("A*100/255", listOf(127))!!, 0.5)
+    }
+
+    @Test
+    fun evaluatesControlModuleVoltageFormula() {
+        assertEquals(14.2, PidFormula.evaluate("((A*256)+B)/1000", listOf(0x37, 0x70))!!, 0.01)
+    }
+
+    @Test
+    fun evaluatesMafFormula() {
+        assertEquals(2.5, PidFormula.evaluate("((A*256)+B)/100", listOf(0, 250)))
+    }
+
+    @Test
+    fun evaluatesFuelPressureFormula() {
+        assertEquals(300.0, PidFormula.evaluate("A*3", listOf(100)))
+    }
+
+    @Test
+    fun evaluatesRuntimeFormula() {
+        assertEquals(512.0, PidFormula.evaluate("(A*256)+B", listOf(2, 0)))
+    }
+
+    @Test
+    fun evaluatesMazdaTirePressureFormula() {
+        // 183 raw -> 251.259 kPa*10 -> ~36.44 psi (Mazda tire pressure conversion constant)
+        assertEquals(36.44, PidFormula.evaluate("((A*1373)/1000)*0.145037738", listOf(183))!!, 0.01)
+    }
+
+    @Test
+    fun returnsNullWhenNotEnoughBytes() {
+        assertNull(PidFormula.evaluate("((A*256)+B)/4", listOf(13)))
+    }
+
+    @Test
+    fun returnsNullForUnsupportedVariable() {
+        assertNull(PidFormula.evaluate("E", listOf(1, 2, 3, 4, 5)))
+    }
+
+    @Test
+    fun returnsNullForMalformedFormula() {
+        assertNull(PidFormula.evaluate("A+*B", listOf(1, 2)))
+    }
+
+    @Test
+    fun returnsNullForDivisionByZero() {
+        assertNull(PidFormula.evaluate("A/B", listOf(10, 0)))
+    }
+}

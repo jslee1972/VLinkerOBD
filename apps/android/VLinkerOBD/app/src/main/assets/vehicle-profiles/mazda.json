@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 2,
+  "profileId": "mazda",
+  "brand": "Mazda",
+  "displayNameZh": "Mazda 私有 PID",
+  "notes": "僅在 Miata (MX-5 NC)、RX-8、MazdaSpeed6 經車主論壇驗證，新款 Mazda3/6、CX 系列大多回報失敗，尚無公開有效資料。",
+  "models": [
+    {
+      "modelId": "miata-nc",
+      "displayNameZh": "Miata (MX-5 NC)",
+      "ecuHeader": "720",
+      "pids": [
+        {"request": "22C901", "field": "tire1PressurePSI", "unit": "psi", "formula": "((A*1373)/1000)*0.145037738", "verified": "forum-partial"},
+        {"request": "22C902", "field": "tire2PressurePSI", "unit": "psi", "formula": "((A*1373)/1000)*0.145037738", "verified": "forum-partial"},
+        {"request": "22C903", "field": "tire3PressurePSI", "unit": "psi", "formula": "((A*1373)/1000)*0.145037738", "verified": "forum-partial"},
+        {"request": "22C904", "field": "tire4PressurePSI", "unit": "psi", "formula": "((A*1373)/1000)*0.145037738", "verified": "forum-partial"}
+      ]
+    },
+    {
+      "modelId": "rx8-ms6",
+      "displayNameZh": "RX-8 / MazdaSpeed6",
+      "ecuHeader": "751",
+      "pids": [
+        {"request": "22C901", "field": "tire1PressurePSI", "unit": "psi", "formula": "((A*1373)/1000)*0.145037738", "verified": "forum-partial"},
+        {"request": "22C902", "field": "tire2PressurePSI", "unit": "psi", "formula": "((A*1373)/1000)*0.145037738", "verified": "forum-partial"},
+        {"request": "22C903", "field": "tire3PressurePSI", "unit": "psi", "formula": "((A*1373)/1000)*0.145037738", "verified": "forum-partial"},
+        {"request": "22C904", "field": "tire4PressurePSI", "unit": "psi", "formula": "((A*1373)/1000)*0.145037738", "verified": "forum-partial"}
+      ]
+    }
+  ]
+}
