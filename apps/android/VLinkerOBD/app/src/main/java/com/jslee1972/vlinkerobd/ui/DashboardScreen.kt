@@ -40,6 +40,7 @@ fun DashboardScreen(
     onSelectBrand: (String) -> Unit,
     onSendManualCommand: (String) -> Unit,
     onClearLogs: () -> Unit,
+    onReadTroubleCodes: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Scaffold(modifier = modifier) { padding ->
@@ -94,8 +95,30 @@ fun DashboardScreen(
                     }
                     if (state.isReady) {
                         OutlinedButton(onClick = onDisconnect) { Text("中斷連線") }
+                        OutlinedButton(
+                            onClick = onReadTroubleCodes,
+                            enabled = !state.isReadingTroubleCodes,
+                            modifier = Modifier.testTag("read_dtc"),
+                        ) {
+                            Text(if (state.isReadingTroubleCodes) "讀取中…" else "讀取故障碼")
+                        }
                     }
                     BrandDropdown(state.availableBrands, state.selectedBrand, onSelectBrand)
+                }
+            }
+
+            state.troubleCodes?.let { codes ->
+                item {
+                    Card(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
+                        Column(modifier = Modifier.padding(8.dp).testTag("trouble_codes")) {
+                            Text("故障碼", style = MaterialTheme.typography.titleSmall)
+                            if (codes.isEmpty()) {
+                                Text("無故障碼")
+                            } else {
+                                codes.forEach { code -> Text(code) }
+                            }
+                        }
+                    }
                 }
             }
 

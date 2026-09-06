@@ -171,4 +171,41 @@ class DashboardViewModelTest {
         runCurrent()
         assertTrue(client.writes.isEmpty())
     }
+
+    @Test
+    fun readTroubleCodesDecodesResponseIntoState() = runTest(dispatcher) {
+        val client = FakeBleObdClient()
+        val viewModel = DashboardViewModel(client, universalProfile, externalScope = backgroundScope)
+
+        client.setReady()
+        runCurrent()
+        repeat(7) { client.respondToNextWrite(">") } // init; leaves an in-flight rpm poll
+
+        viewModel.readTroubleCodes()
+        runCurrent() // pauses the fast loop; "03" is queued behind the in-flight rpm poll
+
+        client.respondToNextWrite("41 0C 00 00\r>") // completes the in-flight rpm poll
+        assertEquals("03\r", client.writes.last())
+
+        client.respondToNextWrite("43 01 33\r>")
+        assertEquals(listOf("P0133"), viewModel.uiState.value.troubleCodes)
+        assertEquals(false, viewModel.uiState.value.isReadingTroubleCodes)
+    }
+
+    @Test
+    fun readTroubleCodesReportsNoCodesAsEmptyList() = runTest(dispatcher) {
+        val client = FakeBleObdClient()
+        val viewModel = DashboardViewModel(client, universalProfile, externalScope = backgroundScope)
+
+        client.setReady()
+        runCurrent()
+        repeat(7) { client.respondToNextWrite(">") }
+
+        viewModel.readTroubleCodes()
+        runCurrent()
+        client.respondToNextWrite("41 0C 00 00\r>")
+        client.respondToNextWrite("43 00\r>")
+
+        assertEquals(emptyList<String>(), viewModel.uiState.value.troubleCodes)
+    }
 }

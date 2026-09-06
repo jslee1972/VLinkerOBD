@@ -18,6 +18,12 @@
 
 選擇 Mazda／Ford／Honda 等廠牌 profile 後，`DashboardViewModel.restartBrandPolling()` 會用獨立的慢速 ticker（每個 PID 之間間隔 3 秒）輪詢，需要 `ecuHeader`/`ecuReceiveFilter` 時先送 `ATSH<header>`／`ATCRA<filter>`，查完送 `ATCRA`／`ATSH00` 還原，過程中會暫停快速的車速/轉速輪詢（共用 `fastLoopPaused` 旗標），避免搶佔或互相干擾。
 
+## 故障碼讀取（Mode 03）
+
+新增 `DtcParser`，依 SAE J2012／ISO 15031-6 解碼 Mode 03（目前故障碼，之後可比照擴充 07 待定碼／0A 永久碼）：回應第一byte（`43`）之後每 2 byte 一組，第一 byte 高 2 bit 決定 `P`/`C`/`B`/`U` 分類，其餘 14 bit 轉成 4 位十六進位數字；`00 00` 視為填充略過。`DashboardViewModel.readTroubleCodes()` 送出 `03`、暫停快速輪詢（沿用 `fastLoopPaused`），解析結果存進 `DashboardUiState.troubleCodes`（`null`＝尚未查詢，空清單＝已查詢但無故障碼）。畫面上「讀取故障碼」按鈕只在已連線（`isReady`）時顯示。
+
+尚未實作：Mode 04 清除故障碼（原設計文件即提醒清碼會同時熄滅故障燈、重置學習值，屬於需要另外確認的破壞性操作，之後有需要再加）、Mode 07／0A 的 UI 入口（`DtcParser` 已支援，只是 ViewModel 目前只呼叫 03）。
+
 ## Gauge
 
 `ui/gauge/Gauge.kt` 用 Compose Canvas 自繪指針錶（不依賴外部 gauge 套件），角度換算抽成純函式 `GaugeMath.valueToAngleDegrees` 方便單元測試。車速錶 0–220 km/h，轉速錶 0–8000 rpm、6500 以上紅線。

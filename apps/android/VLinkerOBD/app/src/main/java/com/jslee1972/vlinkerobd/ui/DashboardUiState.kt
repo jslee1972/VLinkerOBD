@@ -17,4 +17,7 @@ data class DashboardUiState(
     val availableBrands: List<String> = listOf(UNIVERSAL_BRAND),
     val selectedBrand: String = UNIVERSAL_BRAND,
     val extraReadings: Map<String, String> = emptyMap(),
+    /** null = 尚未查詢過；空清單 = 已查詢且目前無故障碼。*/
+    val troubleCodes: List<String>? = null,
+    val isReadingTroubleCodes: Boolean = false,
 )

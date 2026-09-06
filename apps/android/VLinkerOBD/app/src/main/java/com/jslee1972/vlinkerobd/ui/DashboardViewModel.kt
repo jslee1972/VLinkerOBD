@@ -9,6 +9,7 @@ import com.jslee1972.vlinkerobd.obd.ObdCommand
 import com.jslee1972.vlinkerobd.obd.ObdCommandKind
 import com.jslee1972.vlinkerobd.obd.ObdCommandQueue
 import com.jslee1972.vlinkerobd.obd.ObdCommandResult
+import com.jslee1972.vlinkerobd.obd.DtcParser
 import com.jslee1972.vlinkerobd.obd.ObdResponseParser
 import com.jslee1972.vlinkerobd.obd.ObdResponseStatus
 import com.jslee1972.vlinkerobd.obd.PidDefinition
@@ -97,6 +98,30 @@ class DashboardViewModel(
             (result as? ObdCommandResult.Success)?.let { success ->
                 _uiState.update { it.copy(rawResponse = success.raw) }
             }
+            fastLoopPaused = false
+        }
+    }
+
+    /** Reads current (Mode 03) DTCs. Pauses the fast loop like a manual command so it doesn't race the poll. */
+    fun readTroubleCodes() {
+        scope.launch {
+            fastLoopPaused = true
+            _uiState.update { it.copy(isReadingTroubleCodes = true) }
+            val result = queue.execute(ObdCommand("03", ObdCommandKind.OBD))
+            val raw = (result as? ObdCommandResult.Success)?.raw
+            if (raw == null) {
+                appendLog("讀取故障碼逾時")
+            } else {
+                _uiState.update { it.copy(rawResponse = raw) }
+                val codes = DtcParser.parse(raw, "03")
+                if (codes != null) {
+                    _uiState.update { it.copy(troubleCodes = codes) }
+                    appendLog(if (codes.isEmpty()) "讀取故障碼：無故障碼" else "讀取故障碼：${codes.joinToString(", ")}")
+                } else {
+                    appendLog("讀取故障碼失敗")
+                }
+            }
+            _uiState.update { it.copy(isReadingTroubleCodes = false) }
             fastLoopPaused = false
         }
     }

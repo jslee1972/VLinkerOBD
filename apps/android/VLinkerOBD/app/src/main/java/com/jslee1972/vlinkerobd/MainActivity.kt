@@ -103,6 +103,7 @@ class MainActivity : ComponentActivity() {
                     onSelectBrand = viewModel::selectBrand,
                     onSendManualCommand = viewModel::sendManualCommand,
                     onClearLogs = viewModel::clearLogs,
+                    onReadTroubleCodes = viewModel::readTroubleCodes,
                     modifier = Modifier.fillMaxSize(),
                 )
             }

@@ -15,6 +15,7 @@
 4. ELM/STN 初始化
 5. 輪詢 `010C`／`010D`，以動態指針儀表板顯示轉速／車速（見 `docs/2026-09-06-phase-1b-dashboard-gauges-and-brand-pids.md`）
 6. 可選擇 Mazda／Ford／Honda 私有 PID 疊加顯示
+7. 讀取目前故障碼（Mode 03，P/C/B/U 分類解碼）
 
 請遵守 repo 根目錄的 `AGENTS.md`。
 
@@ -33,3 +34,4 @@ Phase 1 原始清單之外，本輪新增：
 - [ ] 連續多次讀不到車速/轉速時，數值歸零顯示 `--`，之後恢復正常讀值
 - [ ] 切換廠牌下拉選單（Mazda／Ford／Honda）後，慢速 ticker 開始輪詢對應私有 PID 且不影響車速/轉速的即時性
 - [ ] 若手邊有 Mazda/Ford/Honda 對應車款，比對私有 PID 顯示的數值是否合理（這些資料標記 `community`/`forum-partial`，未在實車上驗證過）
+- [ ] 「讀取故障碼」在已連線時可按，讀取中會停用；有故障燈亮起的車輛比對顯示的代碼（如 P0xxx）是否與診斷儀讀到的一致；無故障碼的車輛顯示「無故障碼」而非空白或錯誤
