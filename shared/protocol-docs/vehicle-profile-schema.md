@@ -101,3 +101,12 @@ Android 端由 `BitFieldExtractor`（`apps/android/VLinkerOBD/app/src/main/java/
 | Mitsubishi | 使用者提供的 `harshadura/libmut` 確實存在，但它是三菱專屬 **MUT-III（K-Line）診斷協定**的實作，跟本專案用的 ELM327/vLinker OBD-II AT 指令是完全不同的傳輸層，無法直接套用。`plaes/i-miev-obd2` 也確實存在且是 i-MiEV 專屬文件，但同樣記錄的是被動監聽的週期性 CAN 廣播訊息（如「412 - Speed + Odometer」），不是主動 request/response 的 PID。OBDb、iternio/ev-obd-pids 皆無 Mitsubishi repo。暫不建立 profile。 | 已查證 libmut 為 MUT-III 協定、i-miev-obd2 為被動廣播監聽格式 |
 
 **重要架構提醒**：這輪查證釐清了一個常見誤區——很多開源車輛資料庫（OVMS、opendbc、i-miev-obd2 這類）記錄的是「直接接上 CAN bus、被動監聽 ECU 之間互相廣播的封包」，跟本專案透過 vLinker／ELM327 BLE 轉接器「主動送出 AT／OBD 指令、等待 `>` prompt 回應」的存取方式是兩種不同的資料取得管道，前者的資料不能直接搬進 `shared/vehicle-profiles/`。之後查其他廠牌時，要先確認資料是不是走 request/response（Mode 01/22 + 回應）這條路。
+
+### 2026-09-07（第三輪：[iternio/ev-obd-pids](https://github.com/iternio/ev-obd-pids)）
+
+ABRP（A Better Route Planner）官方維護、Apache-2.0，真實存在且格式一致（46 星）。收錄 Ford Mach-E、Honda e:Ny1、HKMC（Hyundai/Kia/Mitsubishi 共用平台 EV，追溯到同一個 JejuSoul 來源）、GMC、Jaguar、Mini、MG、Renault、Aiways、DeepAl，皆為主動 request/response（走 UDS Mode 22），**不是**前面提醒的被動監聽格式，資料取得管道正確。**這次先只記錄查證結果，不建立 profile**，原因：
+
+1. **公式語言比目前的 `bitField` 更複雜**：他們用自己的運算式（`Signed()`、`Int16(A,B)`、`Int24(A,B,C)`、位元位移 `<<`/`>>`、單一位元旗標 `{A:#}`、邏輯運算 `\|\|`/`&&`/`!`/比較運算子），變數命名可到 `A`–`ZZZ`（超過 26 個位元組时用雙字母，如 `af`、`am`）。抽查 `hkmc/hkmc2019.json`：`current`/`voltage`/`soc`/`soh`/`batt_temp`/`ext_temp`/`kwh_charged` 這些數值型欄位都能人工換算成現有 `bitField`（單一連續位元段 + signed + 除數），但 `is_charging`（`(!{ay:2}&&{ay:3})`，同時比較兩個不同位元再做邏輯運算）目前的 `bitField` 規格做不到，需要擴充成「多位元欄位 + 布林運算」才能表示。
+2. **初始化序列衝突，是比 Mazda/Ford/Honda 更大的架構改動**：HKMC 資料的 `init_commands` 用 `ATH1`（header 開啟）+ `ATSP6`（強制協定），跟本專案目前全域固定的 `ATH0`（header 關閉）+ `ATSP0`（自動偵測）相反。現有的 `ecuHeader`/`ecuReceiveFilter` 機制只處理「查詢私有 PID 前後臨時切換」，前提是全域 header/protocol 設定不變；要支援 HKMC 需要讓「選擇廠牌」能觸發重新初始化、套用該廠牌自己的一套全域 AT 設定，這是新的架構能力，不是現有 `restartBrandPolling()` 的擴充範圍。理論上 `ObdResponseParser` 的 marker 搜尋不要求從資料開頭比對，`ATH1` 多出來的 header 前綴應該不影響現有標準 PID 解析，但**沒有實體車或模擬器驗證過**。
+
+若之後要做 Hyundai/Kia EV 支援，這則記錄可以直接當清單用：先解決「per-brand 全域 AT 設定」架構、需要時再擴充 `bitField` 支援多位元布林運算、`is_charging` 這類欄位可以先跳過。
