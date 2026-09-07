@@ -9,7 +9,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -29,6 +28,7 @@ import com.jslee1972.vlinkerobd.obd.PidGroupRepository
 import com.jslee1972.vlinkerobd.obd.VehicleProfile
 import com.jslee1972.vlinkerobd.ui.DashboardScreen
 import com.jslee1972.vlinkerobd.ui.DashboardViewModel
+import com.jslee1972.vlinkerobd.ui.theme.VLinkerObdTheme
 
 private const val PERMISSION_DENIED_MESSAGE = "需要藍牙掃描權限才能尋找裝置"
 
@@ -78,7 +78,7 @@ class MainActivity : ComponentActivity() {
         val dtcDescriptions = DtcDescriptions.load(readAsset = { path -> assets.open(path).bufferedReader().use { it.readText() } })
 
         setContent {
-            MaterialTheme {
+            VLinkerObdTheme {
                 val viewModel: DashboardViewModel = viewModel(factory = factory)
                 val uiState by viewModel.uiState.collectAsState()
                 var permissionDenied by remember { mutableStateOf(false) }
