@@ -2,6 +2,7 @@ package com.jslee1972.vlinkerobd.ui
 
 import com.jslee1972.vlinkerobd.ble.BleObdClient
 import com.jslee1972.vlinkerobd.ble.ConnectionState
+import com.jslee1972.vlinkerobd.ble.DeviceMemory
 import com.jslee1972.vlinkerobd.ble.ScannedBleDevice
 import com.jslee1972.vlinkerobd.obd.PidDefinition
 import com.jslee1972.vlinkerobd.obd.VehicleProfile
@@ -25,6 +26,8 @@ import org.junit.Test
 
 private class FakeBleObdClient : BleObdClient {
     val writes = mutableListOf<String>()
+    val connectCalls = mutableListOf<ScannedBleDevice>()
+
     private val incomingFlow = MutableSharedFlow<ByteArray>(extraBufferCapacity = 64)
     override val incoming: Flow<ByteArray> = incomingFlow
 
@@ -44,7 +47,9 @@ private class FakeBleObdClient : BleObdClient {
 
     override fun startScan() = Unit
     override fun stopScan() = Unit
-    override fun connect(device: ScannedBleDevice) = Unit
+    override fun connect(device: ScannedBleDevice) {
+        connectCalls += device
+    }
     override fun disconnect() {
         connectionStateFlow.value = ConnectionState.DISCONNECTED
     }
@@ -53,6 +58,19 @@ private class FakeBleObdClient : BleObdClient {
 
     fun setReady() {
         connectionStateFlow.value = ConnectionState.READY
+    }
+
+    fun emitDevices(devices: List<ScannedBleDevice>) {
+        devicesFlow.value = devices
+    }
+}
+
+private class FakeDeviceMemory(private var address: String? = null) : DeviceMemory {
+    val rememberedAddresses = mutableListOf<String>()
+    override fun lastDeviceAddress(): String? = address
+    override fun rememberDevice(address: String) {
+        rememberedAddresses += address
+        this.address = address
     }
 }
 
@@ -266,5 +284,44 @@ class DashboardViewModelTest {
         client.respondToNextWrite("43 00\r>")
 
         assertEquals(emptyList<String>(), viewModel.uiState.value.troubleCodes)
+    }
+
+    @Test
+    fun autoConnectsToRememberedDeviceWhenSeenInScanResults() = runTest(dispatcher) {
+        val client = FakeBleObdClient()
+        val memory = FakeDeviceMemory(address = "AA:BB:CC:DD:EE:FF")
+        DashboardViewModel(client, universalProfile, deviceMemory = memory, externalScope = backgroundScope)
+
+        val remembered = ScannedBleDevice("AA:BB:CC:DD:EE:FF", "vLinker MC+", rssi = -60, isPreferred = true)
+        val other = ScannedBleDevice("11:22:33:44:55:66", "OBDII", rssi = -50, isPreferred = false)
+        client.emitDevices(listOf(other, remembered))
+        runCurrent()
+
+        assertEquals(listOf(remembered), client.connectCalls)
+    }
+
+    @Test
+    fun doesNotAutoConnectWithoutARememberedDevice() = runTest(dispatcher) {
+        val client = FakeBleObdClient()
+        DashboardViewModel(client, universalProfile, externalScope = backgroundScope)
+
+        client.emitDevices(listOf(ScannedBleDevice("AA:BB:CC:DD:EE:FF", "vLinker MC+", rssi = -60, isPreferred = true)))
+        runCurrent()
+
+        assertTrue(client.connectCalls.isEmpty())
+    }
+
+    @Test
+    fun remembersDeviceAddressOnceConnectionBecomesReady() = runTest(dispatcher) {
+        val client = FakeBleObdClient()
+        val memory = FakeDeviceMemory()
+        val viewModel = DashboardViewModel(client, universalProfile, deviceMemory = memory, externalScope = backgroundScope)
+
+        val device = ScannedBleDevice("AA:BB:CC:DD:EE:FF", "vLinker MC+", rssi = -60, isPreferred = true)
+        viewModel.connect(device)
+        client.setReady()
+        runCurrent()
+
+        assertEquals(listOf("AA:BB:CC:DD:EE:FF"), memory.rememberedAddresses)
     }
 }

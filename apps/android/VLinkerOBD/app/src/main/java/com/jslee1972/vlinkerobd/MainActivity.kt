@@ -10,6 +10,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -21,6 +22,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.jslee1972.vlinkerobd.ble.BleObdManager
+import com.jslee1972.vlinkerobd.ble.DeviceMemory
+import com.jslee1972.vlinkerobd.ble.SharedPreferencesDeviceMemory
 import com.jslee1972.vlinkerobd.obd.DtcDescriptions
 import com.jslee1972.vlinkerobd.obd.PidGroupRepository
 import com.jslee1972.vlinkerobd.obd.VehicleProfile
@@ -33,10 +36,11 @@ class DashboardViewModelFactory(
     private val bleClient: BleObdManager,
     private val universalProfile: VehicleProfile,
     private val brandProfiles: Map<String, VehicleProfile>,
+    private val deviceMemory: DeviceMemory,
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return DashboardViewModel(bleClient, universalProfile, brandProfiles) as T
+        return DashboardViewModel(bleClient, universalProfile, brandProfiles, deviceMemory) as T
     }
 }
 
@@ -63,7 +67,8 @@ class MainActivity : ComponentActivity() {
             "Honda" to repository.loadBrand("honda.json"),
         )
         val bleClient = BleObdManager(applicationContext)
-        val factory = DashboardViewModelFactory(bleClient, universalProfile, brandProfiles)
+        val deviceMemory = SharedPreferencesDeviceMemory(applicationContext)
+        val factory = DashboardViewModelFactory(bleClient, universalProfile, brandProfiles, deviceMemory)
         val dtcDescriptions = DtcDescriptions.load(readAsset = { path -> assets.open(path).bufferedReader().use { it.readText() } })
 
         setContent {
@@ -83,6 +88,19 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                fun requestScanOrStart() {
+                    if (hasBlePermissions()) {
+                        permissionDenied = false
+                        viewModel.startScan()
+                    } else {
+                        permissionLauncher.launch(requiredBlePermissions())
+                    }
+                }
+
+                // Auto-start scanning once when the app opens, so a remembered device can be
+                // auto-reconnected without the user tapping anything (see DashboardViewModel).
+                LaunchedEffect(Unit) { requestScanOrStart() }
+
                 val displayState = if (permissionDenied && uiState.errorMessage == null) {
                     uiState.copy(errorMessage = PERMISSION_DENIED_MESSAGE)
                 } else {
@@ -91,14 +109,7 @@ class MainActivity : ComponentActivity() {
 
                 DashboardScreen(
                     state = displayState,
-                    onStartScan = {
-                        if (hasBlePermissions()) {
-                            permissionDenied = false
-                            viewModel.startScan()
-                        } else {
-                            permissionLauncher.launch(requiredBlePermissions())
-                        }
-                    },
+                    onStartScan = ::requestScanOrStart,
                     onStopScan = viewModel::stopScan,
                     onConnect = viewModel::connect,
                     onDisconnect = viewModel::disconnect,

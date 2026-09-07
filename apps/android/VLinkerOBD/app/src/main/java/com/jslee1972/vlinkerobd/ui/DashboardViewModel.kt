@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.jslee1972.vlinkerobd.ble.BleObdClient
 import com.jslee1972.vlinkerobd.ble.ConnectionState
+import com.jslee1972.vlinkerobd.ble.DeviceMemory
+import com.jslee1972.vlinkerobd.ble.NoOpDeviceMemory
 import com.jslee1972.vlinkerobd.ble.ScannedBleDevice
 import com.jslee1972.vlinkerobd.obd.ObdCommand
 import com.jslee1972.vlinkerobd.obd.ObdCommandKind
@@ -37,6 +39,7 @@ class DashboardViewModel(
     private val bleClient: BleObdClient,
     private val universalProfile: VehicleProfile,
     private val brandProfiles: Map<String, VehicleProfile> = emptyMap(),
+    private val deviceMemory: DeviceMemory = NoOpDeviceMemory,
     externalScope: CoroutineScope? = null,
 ) : ViewModel() {
 
@@ -64,15 +67,37 @@ class DashboardViewModel(
     private var speedStaleCount = 0
     private var rpmStaleCount = 0
 
+    private var autoConnectAttempted = false
+    private var connectingAddress: String? = null
+
     init {
         scope.launch { bleClient.logs.collect { appendLog(it) } }
-        scope.launch { bleClient.devices.collect { devices -> _uiState.update { it.copy(devices = devices) } } }
+        scope.launch {
+            bleClient.devices.collect { devices ->
+                _uiState.update { it.copy(devices = devices) }
+                maybeAutoConnect(devices)
+            }
+        }
         scope.launch { bleClient.connectionState.collect { state -> onConnectionStateChanged(state) } }
     }
 
     fun startScan() = bleClient.startScan()
     fun stopScan() = bleClient.stopScan()
-    fun connect(device: ScannedBleDevice) = bleClient.connect(device)
+
+    fun connect(device: ScannedBleDevice) {
+        connectingAddress = device.address
+        bleClient.connect(device)
+    }
+
+    /** Auto-reconnects to the last device we successfully connected to, once per app launch. */
+    private fun maybeAutoConnect(devices: List<ScannedBleDevice>) {
+        if (autoConnectAttempted) return
+        val savedAddress = deviceMemory.lastDeviceAddress() ?: return
+        val match = devices.firstOrNull { it.address == savedAddress } ?: return
+        autoConnectAttempted = true
+        appendLog("找到曾連線過的裝置 ${match.name ?: match.address}，自動連線")
+        connect(match)
+    }
 
     fun disconnect() {
         stopPolling()
@@ -154,7 +179,10 @@ class DashboardViewModel(
             )
         }
         when (state) {
-            ConnectionState.READY -> startInitialization()
+            ConnectionState.READY -> {
+                connectingAddress?.let { deviceMemory.rememberDevice(it) }
+                startInitialization()
+            }
             ConnectionState.DISCONNECTED, ConnectionState.DISCONNECTED_AFTER_ERROR, ConnectionState.ERROR -> stopPolling()
             else -> Unit
         }

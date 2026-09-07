@@ -10,6 +10,14 @@
 
 原七步初始化（`ATZ`/`ATE0`/`ATL0`/`ATS0`/`ATH0`/`ATSP0`/`0100`）在 `ATSP0` 之後、`0100` 之前插入 `ATCFC1`（開啟自動流控制），變成八步。真品 ELM327/STN 晶片的自動流控制預設就是開啟的，這行是「明確重申預設值」以防遇到把預設值改掉的仿冒晶片；`ObdCommandQueue` 對 AT 指令一律只看有沒有收到 `>`，不檢查實際回應內容，所以即使某些協定下 `ATCFC1` 被晶片忽略或回錯誤，也不會擋住後續初始化。
 
+## 自動掃描與裝置記憶
+
+`MainActivity` 在 Composable 第一次組成時用 `LaunchedEffect(Unit)` 自動觸發掃描（沿用原本按鈕的權限檢查邏輯，沒有權限就跳權限請求，不會略過）。
+
+新增 `DeviceMemory` 介面（`ble/DeviceMemory.kt`）與 `SharedPreferencesDeviceMemory` 實作：連線成功（`ConnectionState.READY`）時記住當次 `connect()` 傳入的裝置位址；`DashboardViewModel` 收到掃描結果時，若清單裡出現跟記憶體存的位址相符的裝置，且本次 App 啟動還沒自動連過（`autoConnectAttempted` 旗標，每個 ViewModel 實例只觸發一次），就直接呼叫 `connect()`，不需要使用者手動點選。`ViewModel` 建構子預設吃 `NoOpDeviceMemory`（永遠回傳 null、不儲存），維持不注入這個依賴的舊呼叫方式仍可編譯；測試用 `FakeDeviceMemory` 驗證記憶與自動連線邏輯。
+
+`DashboardScreen` 加了 `TopAppBar`，「中斷連線」從掃描控制列移到右上角「⋮」（`Icons.Default.MoreVert`）下拉選單裡，未連線時選項顯示但停用（`enabled = state.isReady`）。
+
 ## NO DATA / 7F 狀態機
 
 `ObdResponseParser.classify()` 回傳 `ObdResponseStatus`：`Data`、`NoData`、`NegativeResponse(service, nrc, messageZh)`、`Unrecognized`。`DashboardViewModel.pollOnce()` 遇到 `NoData`/`NegativeResponse` 不會清空目前讀數，只寫 log；車速/轉速個別累計「連續失敗次數」，達到 5 次才把畫面歸零顯示 `--`（見 `STALE_THRESHOLD`）。
