@@ -18,6 +18,12 @@
     {"request": "012F", "field": "fuelLevelPercent", "unit": "%", "formula": "A*100/255"},
     {"request": "0146", "field": "ambientAirTempC", "unit": "degC", "formula": "A-40"},
     {"request": "015C", "field": "engineOilTempC", "unit": "degC", "formula": "A-40"},
-    {"request": "011F", "field": "runtimeSinceStartSec", "unit": "s", "formula": "(A*256)+B"}
+    {"request": "011F", "field": "runtimeSinceStartSec", "unit": "s", "formula": "(A*256)+B"},
+    {"request": "0106", "field": "shortTermFuelTrimBank1Percent", "unit": "%", "formula": "(A-128)*100/128"},
+    {"request": "0107", "field": "longTermFuelTrimBank1Percent", "unit": "%", "formula": "(A-128)*100/128"},
+    {"request": "0108", "field": "shortTermFuelTrimBank2Percent", "unit": "%", "formula": "(A-128)*100/128"},
+    {"request": "0109", "field": "longTermFuelTrimBank2Percent", "unit": "%", "formula": "(A-128)*100/128"},
+    {"request": "010E", "field": "timingAdvanceDegrees", "unit": "deg", "formula": "A/2-64"},
+    {"request": "0121", "field": "distanceWithMilOnKM", "unit": "km", "formula": "(A*256)+B"}
   ]
 }

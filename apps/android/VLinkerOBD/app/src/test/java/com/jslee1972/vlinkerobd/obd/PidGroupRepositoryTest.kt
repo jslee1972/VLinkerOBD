@@ -28,6 +28,21 @@ class PidGroupRepositoryTest {
     }
 
     @Test
+    fun loadsUniversalProfileWithExtendedPids() {
+        val profile = repository().loadUniversal()
+
+        val stft1 = profile.pids.single { it.field == "shortTermFuelTrimBank1Percent" }
+        assertEquals("0106", stft1.request)
+        assertEquals("(A-128)*100/128", stft1.formula)
+
+        assertEquals("0107", profile.pids.single { it.field == "longTermFuelTrimBank1Percent" }.request)
+        assertEquals("0108", profile.pids.single { it.field == "shortTermFuelTrimBank2Percent" }.request)
+        assertEquals("0109", profile.pids.single { it.field == "longTermFuelTrimBank2Percent" }.request)
+        assertEquals("010E", profile.pids.single { it.field == "timingAdvanceDegrees" }.request)
+        assertEquals("0121", profile.pids.single { it.field == "distanceWithMilOnKM" }.request)
+    }
+
+    @Test
     fun loadsMazdaBrandProfileWithPerModelHeaders() {
         val profile = repository().loadBrand("mazda.json")
 

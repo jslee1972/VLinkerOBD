@@ -53,6 +53,22 @@ class PidFormulaTest {
     }
 
     @Test
+    fun evaluatesFuelTrimFormula() {
+        // (A-128)*100/128; A=138 -> +7.8125%
+        assertEquals(7.8125, PidFormula.evaluate("(A-128)*100/128", listOf(138))!!, 0.0001)
+    }
+
+    @Test
+    fun evaluatesTimingAdvanceFormula() {
+        assertEquals(10.0, PidFormula.evaluate("A/2-64", listOf(148)))
+    }
+
+    @Test
+    fun evaluatesDistanceWithMilOnFormula() {
+        assertEquals(300.0, PidFormula.evaluate("(A*256)+B", listOf(1, 44)))
+    }
+
+    @Test
     fun returnsNullWhenNotEnoughBytes() {
         assertNull(PidFormula.evaluate("((A*256)+B)/4", listOf(13)))
     }
