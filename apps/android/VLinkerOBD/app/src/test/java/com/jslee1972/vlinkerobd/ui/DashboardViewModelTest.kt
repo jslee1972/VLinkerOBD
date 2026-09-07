@@ -201,6 +201,27 @@ class DashboardViewModelTest {
         assertEquals(40, viewModel.uiState.value.vehicleData.speedKph)
         assertEquals(0, viewModel.uiState.value.vehicleData.rpm)
         assertEquals("41 0D 28\r>", viewModel.uiState.value.rawResponse)
+        assertEquals(listOf(0f), viewModel.uiState.value.rpmHistory)
+        assertEquals(listOf(40f), viewModel.uiState.value.speedHistory)
+    }
+
+    @Test
+    fun accumulatesSpeedAndRpmHistoryAcrossPolls() = runTest(dispatcher) {
+        val client = FakeBleObdClient()
+        val viewModel = DashboardViewModel(client, universalProfile, externalScope = backgroundScope)
+
+        client.completeInitAndSkipVin() // leaves an in-flight rpm poll
+
+        client.respondToNextWrite("41 0C 03 E8\r>") // rpm -> 250
+        client.respondToNextWrite("41 0D 32\r>") // speed -> 50 km/h
+        dispatcher.scheduler.advanceTimeBy(201)
+        runCurrent()
+
+        client.respondToNextWrite("41 0C 07 D0\r>") // rpm -> 500
+        client.respondToNextWrite("41 0D 3C\r>") // speed -> 60 km/h
+
+        assertEquals(listOf(250f, 500f), viewModel.uiState.value.rpmHistory)
+        assertEquals(listOf(50f, 60f), viewModel.uiState.value.speedHistory)
     }
 
     @Test

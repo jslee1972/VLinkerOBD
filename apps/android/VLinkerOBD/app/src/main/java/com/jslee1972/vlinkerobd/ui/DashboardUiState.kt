@@ -18,6 +18,8 @@ data class DashboardUiState(
     val selectedBrand: String = UNIVERSAL_BRAND,
     val extraReadings: Map<String, String> = emptyMap(),
     val standardReadings: Map<String, String> = emptyMap(),
+    val speedHistory: List<Float> = emptyList(),
+    val rpmHistory: List<Float> = emptyList(),
     /** null = 尚未查詢過；空清單 = 已查詢且目前無故障碼。*/
     val troubleCodes: List<String>? = null,
     val isReadingTroubleCodes: Boolean = false,

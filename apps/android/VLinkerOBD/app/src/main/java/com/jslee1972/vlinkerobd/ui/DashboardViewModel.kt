@@ -250,6 +250,7 @@ class DashboardViewModel(
                     if (rpm != null) {
                         rpmStaleCount = 0
                         updateVehicleData { it.copy(rpm = rpm.roundToInt()) }
+                        _uiState.update { it.copy(rpmHistory = (it.rpmHistory + rpm.toFloat()).takeLast(HISTORY_SIZE)) }
                     } else if (++rpmStaleCount >= STALE_THRESHOLD) {
                         updateVehicleData { it.copy(rpm = null) }
                     }
@@ -259,6 +260,7 @@ class DashboardViewModel(
                     if (speed != null) {
                         speedStaleCount = 0
                         updateVehicleData { it.copy(speedKph = speed.roundToInt()) }
+                        _uiState.update { it.copy(speedHistory = (it.speedHistory + speed.toFloat()).takeLast(HISTORY_SIZE)) }
                     } else if (++speedStaleCount >= STALE_THRESHOLD) {
                         updateVehicleData { it.copy(speedKph = null) }
                     }
@@ -371,5 +373,6 @@ class DashboardViewModel(
         private const val BRAND_POLL_INTERVAL_MS = 3000L
         private const val STALE_THRESHOLD = 5
         private val STANDARD_EXTRA_FIELDS = listOf("controlModuleVoltage", "coolantTempC", "timingAdvanceDegrees")
+        private const val HISTORY_SIZE = 60
     }
 }
