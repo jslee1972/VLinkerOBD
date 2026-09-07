@@ -43,6 +43,7 @@ fun Gauge(
     unit: String,
     modifier: Modifier = Modifier,
     redlineStart: Float? = null,
+    trendContent: (@Composable () -> Unit)? = null,
 ) {
     val animatedValue by animateFloatAsState(targetValue = value, label = "gauge-$label")
     val trackColor = MaterialTheme.colorScheme.surfaceVariant
@@ -139,6 +140,8 @@ fun Gauge(
                 )
             }
         }
+
+        trendContent?.invoke()
 
         Text(
             text = label,

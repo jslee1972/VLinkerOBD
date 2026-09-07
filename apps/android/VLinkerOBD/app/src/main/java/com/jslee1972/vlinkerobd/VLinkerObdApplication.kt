@@ -37,8 +37,14 @@ class VLinkerObdApplication : Application() {
         val universalProfile = repository.loadUniversal()
         // Citroen/Peugeot share the same PSA-platform engine/BSI generation this profile was
         // reverse-engineered from (see shared/vehicle-profiles/citroen.json notes), so both
-        // detected brand names map to the one loaded profile.
-        val psaProfile = repository.loadBrand("citroen.json")
+        // detected brand names map to the one loaded profile. The EV-only DIDs (citroen-ev.json,
+        // sourced from OVMS's vehicle_fiatedoblo module) are merged in too: on a petrol vehicle
+        // they'll simply NO-DATA and back off like any other unsupported PID (see
+        // DashboardViewModel's GIVE_UP_THRESHOLD), so there's no separate EV/ICE profile switch
+        // to maintain — only an EMP2 electric Berlingo/e-Rifter/Combo-e will ever populate them.
+        val psaIceProfile = repository.loadBrand("citroen.json")
+        val psaEvProfile = repository.loadBrand("citroen-ev.json")
+        val psaProfile = psaIceProfile.copy(pids = psaIceProfile.pids + psaEvProfile.pids)
         val brandProfiles = mapOf(
             "Mazda" to repository.loadBrand("mazda.json"),
             "Ford" to repository.loadBrand("ford.json"),

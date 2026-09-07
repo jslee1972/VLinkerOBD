@@ -13,10 +13,11 @@ Schema 定義見 `shared/protocol-docs/vehicle-profile-schema.md`（v3）。
 - `ford.json`：Ford Fiesta 里程、胎壓 x4、胎壓警示燈，取自 [OBDb](https://github.com/OBDb) 社群維護資料集，`verified: "community"`，用位元層級 `bitField` 描述（非 `formula`）。
 - `honda.json`：Honda Civic Hybrid SOC、高壓電池電壓/電流、水溫 x2、發電機占空比、里程，同樣取自 OBDb，`verified: "community"`，`bitField` 格式。
 - `citroen.json`：Citroën/Peugeot (PSA) 引擎渦輪/機油壓力、四輪胎壓/胎溫、車身電瓶/油量/剩餘里程，取自 [nico1080/OBD-LCD-display-for-PSA](https://github.com/nico1080/OBD-LCD-display-for-PSA)，`verified: "forum-partial"`——單一作者在 2016 Citroën DS4（EP6FDTX 引擎/BSI2010）實測，非社群多車驗證；App 裡同時對應「Citroen」與「Peugeot」兩個偵測到的廠牌。原始來源另外還有 rpm/outside temp/engine oil temp/fuel level 四個 Mode 22 DID，因為跟 `universal-obd2.json` 的標準 Mode 01 PID 完全重複（同一件事、多切一次 ECU header），已移除，見 schema 文件第十二輪。
+- `citroen-ev.json`：Citroën/Peugeot 純電 EMP2 平台（ë-Berlingo/e-Rifter/Combo-e/ProAce City，約 2022 年後）電池管理系統/VCU 專屬 PID（電池電壓/電流/SOH/可用電量/最小最大單體電壓、環境/電池/DC-DC/車載充電器溫度），取自 [OVMS v3](https://github.com/openvehicles/Open-Vehicle-Monitoring-System-3) 的 `vehicle_fiatedoblo` 模組原始碼，逐行比對解碼邏輯重新推導公式，`verified: "community"`。這是**電動車電池系統專屬資料，燃油版車輛不會有對應數值**；`VLinkerObdApplication` 會把它跟 `citroen.json` 合併成同一個 Citroen/Peugeot profile（不額外做 EV/ICE 車型選擇），燃油車遇到這些 PID 會 NO DATA 並自動退避，跟其他不支援的 PID 一視同仁，見 schema 文件第十四輪。
 
 ## 載入方式
 
-App 永遠載入 `universal-obd2.json`，使用者可另外選擇一個 brand profile（`mazda.json`／`ford.json`／`honda.json`／`citroen.json`）疊加顯示。其餘廠牌（Toyota、Lexus、Hyundai、Kia、BMW、Volkswagen、Mercedes-Benz、Audi、Mitsubishi 等）目前查無可信賴、且存取方式相容（見下方「架構提醒」）的公開私有 PID 資料，調查記錄見 schema 文件，暫不建立對應檔案。
+App 永遠載入 `universal-obd2.json`，使用者可另外選擇一個 brand profile（`mazda.json`／`ford.json`／`honda.json`／`citroen.json`，Citroen/Peugeot 會再疊加 `citroen-ev.json`）疊加顯示。其餘廠牌（Toyota、Lexus、Hyundai、Kia、BMW、Volkswagen、Mercedes-Benz、Audi、Mitsubishi 等）目前查無可信賴、且存取方式相容（見下方「架構提醒」）的公開私有 PID 資料，調查記錄見 schema 文件，暫不建立對應檔案。
 
 ## Android 端使用注意
 

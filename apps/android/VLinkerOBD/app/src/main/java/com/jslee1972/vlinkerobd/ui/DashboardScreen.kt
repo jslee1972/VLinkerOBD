@@ -79,19 +79,17 @@ fun DashboardScreen(
     onStopScan: () -> Unit,
     onConnect: (ScannedBleDevice) -> Unit,
     onDisconnect: () -> Unit,
-    onSelectBrand: (String) -> Unit,
     onSendManualCommand: (String) -> Unit,
     onClearLogs: () -> Unit,
-    onReadTroubleCodes: () -> Unit,
+    onTestEcuSupport: () -> Unit,
     dtcDescriptions: DtcDescriptions,
     modifier: Modifier = Modifier,
 ) {
     var showTroubleCodeDetail by remember { mutableStateOf(false) }
     var showOverflowMenu by remember { mutableStateOf(false) }
     var showDiagnostics by remember { mutableStateOf(false) }
-    var showSupportedBrands by remember { mutableStateOf(false) }
     var showDevicePicker by remember { mutableStateOf(false) }
-    var showBrandPicker by remember { mutableStateOf(false) }
+    var showEcuTest by remember { mutableStateOf(false) }
 
     Scaffold(
         modifier = modifier,
@@ -153,23 +151,6 @@ fun DashboardScreen(
                             modifier = Modifier.testTag("menu_disconnect"),
                         )
                         DropdownMenuItem(
-                            text = { Text(if (state.isReadingTroubleCodes) "讀取故障碼中…" else "讀取故障碼") },
-                            enabled = state.isReady && !state.isReadingTroubleCodes,
-                            onClick = {
-                                showOverflowMenu = false
-                                onReadTroubleCodes()
-                            },
-                            modifier = Modifier.testTag("menu_read_dtc"),
-                        )
-                        DropdownMenuItem(
-                            text = { Text("手動選擇廠牌") },
-                            onClick = {
-                                showOverflowMenu = false
-                                showBrandPicker = true
-                            },
-                            modifier = Modifier.testTag("menu_brand_picker"),
-                        )
-                        DropdownMenuItem(
                             text = { Text("診斷主控台") },
                             onClick = {
                                 showOverflowMenu = false
@@ -178,12 +159,13 @@ fun DashboardScreen(
                             modifier = Modifier.testTag("menu_diagnostics"),
                         )
                         DropdownMenuItem(
-                            text = { Text("支援廠牌") },
+                            text = { Text("ECU 支援測試") },
+                            enabled = state.isReady,
                             onClick = {
                                 showOverflowMenu = false
-                                showSupportedBrands = true
+                                showEcuTest = true
                             },
-                            modifier = Modifier.testTag("menu_supported_brands"),
+                            modifier = Modifier.testTag("menu_ecu_test"),
                         )
                     }
                 },
@@ -210,46 +192,47 @@ fun DashboardScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp, horizontal = 8.dp),
                     ) {
-                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Gauge(
-                                value = (state.vehicleData.speedKph ?: 0).toFloat(),
-                                minValue = 0f,
-                                maxValue = 220f,
-                                label = "車速",
-                                unit = "km/h",
-                                modifier = Modifier.testTag("speed_value"),
-                            )
-                            if (state.speedHistory.size >= 2) {
-                                TrendChart(
-                                    values = state.speedHistory,
-                                    label = "車速",
-                                    unit = "km/h",
-                                    lineColor = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-                                    compact = true,
-                                )
-                            }
-                        }
-                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Gauge(
-                                value = (state.vehicleData.rpm ?: 0).toFloat(),
-                                minValue = 0f,
-                                maxValue = 8000f,
-                                label = "轉速",
-                                unit = "rpm",
-                                redlineStart = 6500f,
-                            )
-                            if (state.rpmHistory.size >= 2) {
-                                TrendChart(
-                                    values = state.rpmHistory,
-                                    label = "轉速",
-                                    unit = "rpm",
-                                    lineColor = MaterialTheme.colorScheme.secondary,
-                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-                                    compact = true,
-                                )
-                            }
-                        }
+                        Gauge(
+                            value = (state.vehicleData.speedKph ?: 0).toFloat(),
+                            minValue = 0f,
+                            maxValue = 220f,
+                            label = "車速",
+                            unit = "km/h",
+                            modifier = Modifier.weight(1f).testTag("speed_value"),
+                            trendContent = if (state.speedHistory.size >= 2) {
+                                {
+                                    TrendChart(
+                                        values = state.speedHistory,
+                                        label = "車速",
+                                        unit = "km/h",
+                                        lineColor = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.fillMaxWidth(0.7f),
+                                        compact = true,
+                                    )
+                                }
+                            } else null,
+                        )
+                        Gauge(
+                            value = (state.vehicleData.rpm ?: 0).toFloat(),
+                            minValue = 0f,
+                            maxValue = 8000f,
+                            label = "轉速",
+                            unit = "rpm",
+                            redlineStart = 6500f,
+                            modifier = Modifier.weight(1f),
+                            trendContent = if (state.rpmHistory.size >= 2) {
+                                {
+                                    TrendChart(
+                                        values = state.rpmHistory,
+                                        label = "轉速",
+                                        unit = "rpm",
+                                        lineColor = MaterialTheme.colorScheme.secondary,
+                                        modifier = Modifier.fillMaxWidth(0.7f),
+                                        compact = true,
+                                    )
+                                }
+                            } else null,
+                        )
                     }
                 }
             }
@@ -329,22 +312,6 @@ fun DashboardScreen(
         )
     }
 
-    if (showSupportedBrands) {
-        SupportedBrandsDialog(
-            pidBrands = state.availableBrands.filter { it != UNIVERSAL_BRAND },
-            onDismiss = { showSupportedBrands = false },
-        )
-    }
-
-    if (showBrandPicker) {
-        BrandPickerDialog(
-            brands = state.availableBrands,
-            selected = state.selectedBrand,
-            onSelect = { onSelectBrand(it); showBrandPicker = false },
-            onDismiss = { showBrandPicker = false },
-        )
-    }
-
     if (showDevicePicker) {
         DevicePickerDialog(
             state = state,
@@ -352,6 +319,14 @@ fun DashboardScreen(
             onStopScan = onStopScan,
             onConnect = { onConnect(it); showDevicePicker = false },
             onDismiss = { showDevicePicker = false },
+        )
+    }
+
+    if (showEcuTest) {
+        EcuSupportTestDialog(
+            state = state,
+            onRunTest = onTestEcuSupport,
+            onDismiss = { showEcuTest = false },
         )
     }
 }
@@ -550,75 +525,6 @@ private fun TroubleCodeDetailDialog(
 }
 
 @Composable
-private fun SupportedBrandsDialog(pidBrands: List<String>, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = { TextButton(onClick = onDismiss) { Text("關閉") } },
-        title = { Text("支援廠牌") },
-        text = {
-            Column(
-                modifier = Modifier
-                    .heightIn(max = 400.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("即時參數（PID）", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
-                    Text(
-                        text = pidBrands.joinToString("、").ifBlank { "（尚無）" },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("故障碼說明", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
-                    Text(
-                        text = DtcDescriptions.SUPPORTED_BRANDS.joinToString("、"),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Text(
-                    text = "車款依 VIN 自動判斷；即時參數需要有對應廠牌的 PID 資料才會顯示，故障碼說明則只要偵測到廠牌即可，兩者不一定同步。",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        },
-    )
-}
-
-@Composable
-private fun BrandPickerDialog(brands: List<String>, selected: String, onSelect: (String) -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = { TextButton(onClick = onDismiss) { Text("關閉") } },
-        title = { Text("手動選擇廠牌") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    text = "車款通常由 VIN 自動判斷；只有在自動判斷失敗（例如此車不支援 Mode 09）時才需要手動選擇。",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                brands.forEach { brand ->
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                brand,
-                                fontWeight = if (brand == selected) FontWeight.Bold else FontWeight.Normal,
-                                color = if (brand == selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                            )
-                        },
-                        onClick = { onSelect(brand) },
-                    )
-                }
-            }
-        },
-    )
-}
-
-@Composable
 private fun DevicePickerDialog(
     state: DashboardUiState,
     onStartScan: () -> Unit,
@@ -698,6 +604,96 @@ private fun DeviceRow(device: ScannedBleDevice, onConnect: (ScannedBleDevice) ->
                 )
             }
             Button(onClick = { onConnect(device) }) { Text("連線") }
+        }
+    }
+}
+
+@Composable
+private fun EcuSupportTestDialog(
+    state: DashboardUiState,
+    onRunTest: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    // Runs once as soon as the dialog opens; the retest button re-triggers it on demand.
+    DisposableEffect(Unit) { onRunTest(); onDispose {} }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            color = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(20.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("ECU 支援測試", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                    if (state.isTestingEcu) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                }
+                Text(
+                    text = "測試這台車的 ECU 支援哪些讀取 VIN 的方式（Mode 09、UDS 22F190），可用來判斷此車是否只是協定不支援，而非硬體接線問題。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Column(
+                    modifier = Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (state.ecuTestResults.isEmpty() && !state.isTestingEcu) {
+                        Text(
+                            "尚無測試結果",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    state.ecuTestResults.forEach { result -> EcuTestResultRow(result) }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    TextButton(onClick = onRunTest, enabled = !state.isTestingEcu, modifier = Modifier.testTag("ecu_test_retry")) {
+                        Text("重新測試")
+                    }
+                    Row(modifier = Modifier.weight(1f)) {}
+                    TextButton(onClick = onDismiss) { Text("關閉") }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EcuTestResultRow(result: EcuTestResult) {
+    val statusColor = when (result.status) {
+        EcuTestStatus.SUPPORTED -> Color(0xFF22C55E)
+        EcuTestStatus.NO_DATA -> MaterialTheme.colorScheme.onSurfaceVariant
+        EcuTestStatus.NEGATIVE, EcuTestStatus.TIMEOUT, EcuTestStatus.UNRECOGNIZED -> MaterialTheme.colorScheme.error
+    }
+    Card(
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("ecu_test_row_${result.command}"),
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = result.command,
+                    fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                )
+                Text(result.statusMessage, color = statusColor, style = MaterialTheme.typography.labelMedium)
+            }
+            Text(result.description, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            result.raw?.let {
+                Text(
+                    text = "Raw: $it",
+                    fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }

@@ -79,13 +79,14 @@ fun TrendChart(
                 lineTo(0f, size.height)
                 close()
             }
+            val strokeWidth = if (compact) 2f else 4f
             drawPath(fillPath, color = lineColor.copy(alpha = 0.12f), style = Fill)
             drawPath(
                 linePath,
                 color = lineColor,
-                style = Stroke(width = 4f, cap = StrokeCap.Round, join = StrokeJoin.Round),
+                style = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round),
             )
-            drawCircle(color = lineColor, radius = 5f, center = Offset(size.width, yOf(values.last())))
+            drawCircle(color = lineColor, radius = strokeWidth * 0.7f, center = Offset(size.width, yOf(values.last())))
         }
     }
 }

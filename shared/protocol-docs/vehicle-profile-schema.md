@@ -199,3 +199,31 @@ Citroën/Peugeot 目前已連續四輪查證（`autowp/psa-can` 不存在、OVMS
 使用者的觀察是對的：Mode 01 PID 跟 UDS Mode 22 DID 功能上都是「用識別碼讀取當前數值」，但兩者是各自獨立的定址空間，不能互通；不過如果某數值已經有標準 Mode 01 PID，就不該再為同一件事另外查該廠牌的 Mode 22 DID（多一次請求、可能還要多切一次 ECU header）。
 
 逐一比對現有廠牌 profile 的欄位跟 `universal-obd2.json`：`ford.json`（里程、胎壓警示、四輪胎壓）、`mazda.json`（四輪胎壓）都沒有重複，這些本來就是標準 PID 沒有涵蓋的資料。`citroen.json` 抓到 4 筆真的重複：`psaRpm`（`22D400`）重複 `rpm`（`010C`）、`outsideTempC`（`22D912`）重複 `ambientAirTempC`（`0146`）、`engineOilTempPSA_C`（`22DB83`）重複 `engineOilTempC`（`015C`）、`fuelLevelPercentPSA`（`22D8C4`）重複 `fuelLevelPercent`（`012F`）——這 4 筆已經從 `citroen.json` 移除。`mapPressureBar`（`22D4D9`）雖然跟 `intakeManifoldPressureKPA`（`010B`）概念相近，但渦輪引擎的 MAP 感測點位置可能跟標準感測器不同，證據不足以判定重複，保留。
+
+### 2026-09-07（第十三輪：使用者提出 [openvehicles/Open-Vehicle-Monitoring-System-3](https://github.com/openvehicles/Open-Vehicle-Monitoring-System-3) 及一份德文論壇 ELM327 AT 指令/DID 表，詢問能否取得雪鐵龍 Berlingo 資料；並追問「油版是否需要跳線，能否用軟體層解決」）
+
+用 `gh api`/`curl` 查證 OVMS v3 repo 為真實專案，`vehicle_fiatedoblo` 元件文件記載其相容車款含「Peugeot e-Rifter, Opel Combo-e, Citroën **Berlingo** 及 Toyota ProAce City」，並逐一比對貼上的德文論壇表格跟 `vehicle_fiatedoblo.cpp` 原始碼——header/DID/公式幾乎完全對得上（`0x6a2`/`0x682` 讀環境溫度/電池溫度 DID `0xd434`/`0xd8ef`；`0x6b4`/`0x694` 讀電池電壓/電流/最小最大單體電壓/kWh/SOH DID `0xd815`/`0xd816`/`0xd86f`/`0xd870`/`0xd865`/`0xd860`，公式：電壓=value2/16、電流=(3 bytes)/64−1200、SOH=((3 bytes)−65536)/16、單體電壓=value2/1000、kWh=value2/64）。
+
+**但這整組資料是純電動車電池管理系統專屬的**（SOC/SOH/kWh/電池電壓電流），對燃油車完全沒有對應項目，**不會**加入 `citroen.json`。且 OVMS 官方文件自稱鎖定的是 Stellantis **EMP2 平台（2022–2024 年 e-Doblo/ë-Berlingo/e-Rifter 等純電版）**，跟使用者實測的燃油版 Berlingo 很可能是不同世代的車架/電子架構——先前實測（Mode 09 讀不到 VIN、大量 NO DATA/負回應）比較像是較舊、非 CAN（K-Line/ISO9141 或 KWP2000）的世代，OVMS 這組電動車發現**不能直接套用**在這台燃油測試車上。
+
+使用者接著問：OVMS 官方文件自稱「Works with a Generic OBD2 OVMS Cable」（不需跳線），但另一則法國論壇資料聲稱 PSA 的專屬診斷 CAN bus 落在非標準的 OBD-II 第 3/8 腳位、需要硬體改線——如果油電版真的需要跳線，能否用軟體層解決？
+
+**結論：如果真的是接腳沒有實際接到轉接器內部收發器的硬體限制，軟體層無法解決**——這是電路是否導通的物理層問題，不是通訊協定或指令能繞過的（收發器沒接到那兩根針腳，送再多 AT 指令都送不出訊號、也收不到回應）。但兩個資訊來源本身可能在講不同的匯流排：OVMS「免跳線」講的是 e-Berlingo（EMP2 平台）**接引擎/電池管理系統的標準 CAN 匯流排**（pin 6/14），而法國論壇講的第 3/8 腳位「PSA 專屬診斷匯流排」通常是用來連 BSI（車身控制模組）、舒適系統等**非引擎**模組的內部多工匯流排，兩者性質不同、不衝突。也就是說：既然這台燃油 Berlingo 已經能透過標準腳位讀到電瓶電壓、水溫（證明標準 CAN/K-Line 匯流排本身是通的），VIN 讀不到、廠牌 PID 覆蓋率低，比較可能是「這台車的 ECU 在標準匯流排上本來就不支援 Mode 09／某些 Mode 22 DID」的協定限制，而不是接錯腳位——這點應該在確認實際車架年份/世代前，不要假設一定要跳線。
+
+同一輪，使用者貼了一份 UDS 建議：改用 `22 F1 90`（Read Data By Identifier，DID `F190` 為標準 VIN 識別碼）取代 `09 02` 讀 VIN，並提到需要自行實作 ISO-TP 多幀重組（First Frame/Flow Control/Consecutive Frame）。`F190` 確實是 ISO 14229 標準保留的 VIN DID，這部分可信；但 ISO-TP 重組只有在**直接操作原始 CAN 匯流排**時才需要自己做——本 App 是透過 ELM327 相容的 AT 指令介面跟轉接器溝通，轉接器晶片本身已經處理好 CAN 分幀/流控，App 收到的就是已重組好的一行文字回應（如 `62 F1 90 57 30 4C ...`），**不需要、也不應該**在 App 裡再實作 ISO-TP。下一次連車測試時，可以直接用現有「手動指令」功能送 `22F190`（沿用目前偵測到能通標準 PID 時的 ECU header，不需先跳線）試看看這顆引擎 ECU 是否支援這個標準 DID；如果能讀到 VIN，可以之後串進 `DashboardViewModel` 作為 Mode 09 失敗時的備用 VIN 讀取路徑。
+
+### 2026-09-07（第十四輪：使用者要求「develop OVMS logic」+「加入 22F190/ECU 支援測試功能到右上角」——把第十三輪的分析落實成程式碼）
+
+**OVMS EV 資料**：下載 `vehicle_fiatedoblo.cpp` 全文（前一輪只查證了 header/DID 對得上，這輪逐行比對 `IncomingBatteryPoll`/`IncomingVCUPoll` 的實際解碼運算式，重新推導成本專案的 `formula`/`bitField` 語法，不是憑記憶轉抄）：
+- 電池電壓 `22D815`：`((A*256)+B)/16`
+- 電池電流 `22D816`：`((B*65536)+(C*256)+D)/64-1200`（原始碼用的是 `data[1..3]`，不是 `data[0..2]`，要特別注意位元組偏移）
+- 最小/最大單體電壓 `22D86F`/`22D870`：`((A*256)+B)/1000`
+- 可用電量 `22D865`：`((A*256)+B)/64`
+- SOH `22D860`：`((A*65536)+(B*256)+C-65536)/16`
+- 環境溫度 `22D434`、電池溫度 `22D8EF`：原始碼是 `(int8_t)data[0]`，即有號位元組，四則運算公式引擎無法表達「有號」，改用 schema v3 的 `bitField`（`bitIndex:0, bitLength:8, signed:true`）
+- DC-DC 轉換器溫度 `22D8CE`、車載充電器溫度 `22D8E1`：`(int8_t)data[1]`，同樣用 `bitField`（`bitIndex:8, bitLength:8, signed:true`）
+- 原始碼裡另外還有 `0xD8CD`（驅動馬達溫度，作者自己註記 `// just a guess, TODO: check it!`）、`0xD8F9`（冷卻液溫度，只出現在輪詢清單、沒有對應的 switch-case 解碼邏輯）、`0xD410`（馬達扭矩，作者自己標記 `// guessed:`）——三者都因為連原作者都不確定/沒有解碼邏輯，未收錄，避免比論壇資料還不可信的猜測進到 `shared/`。
+
+新增 `shared/vehicle-profiles/citroen-ev.json`（`brand: "Citroen"`，`verified: "community"`），在 `VLinkerObdApplication.kt` 跟既有的 `citroen.json`（燃油 DS4 profile）合併成同一個 `psaProfile`（`pids` 陣列相加），不另外做 EV/ICE 車型切換 UI——理由是本專案既有的失敗退避機制（`GIVE_UP_THRESHOLD`/`COOLDOWN_ROUNDS`）本來就會讓車輛答不出來的 PID 自動降頻，燃油車遇到這些 EV-only DID 會全部 NO DATA 然後自動退避，跟其他查不到的 PID 一視同仁，不需要多一層車型選擇的複雜度。
+
+**ECU 支援測試工具**：在右上角選單新增「ECU 支援測試」，對應 `DashboardViewModel.testEcuSupport()` — 依序送出 `0100`（確認標準匯流排本身有無回應）、`0902`（Mode 09 VIN）、`22F190`（UDS 讀 VIN），並將結果分類成「有回應／NO DATA／拒絕(7F)／逾時／無法解析」五種狀態顯示給使用者；若 `22F190` 被拒絕或無回應，會自動追加送 `1003`（切換至延伸診斷 Session）後重試一次，最後用 `1001` 還原預設 Session。這是純讀取型的診斷探測（沒有寫入/清除任何 ECU 狀態的指令），用來幫使用者快速判斷「這台車到底是協定/服務不支援，還是接線問題」，呼應第十三輪的結論。已補上 `DashboardViewModelTest` 的兩個情境（直接成功、被拒絕後靠 1003 重試成功）並跑過 `testDebugUnitTest`/`assembleDebug` 全部通過。

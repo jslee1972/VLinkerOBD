@@ -5,6 +5,17 @@ import com.jslee1972.vlinkerobd.model.VehicleData
 
 const val UNIVERSAL_BRAND = "通用"
 
+enum class EcuTestStatus { SUPPORTED, NO_DATA, NEGATIVE, UNRECOGNIZED, TIMEOUT }
+
+/** One probe result from the "ECU 支援測試" tool (see DashboardViewModel.testEcuSupport). */
+data class EcuTestResult(
+    val command: String,
+    val description: String,
+    val raw: String?,
+    val status: EcuTestStatus,
+    val statusMessage: String,
+)
+
 data class DashboardUiState(
     val connectionLabel: String = "尚未連線",
     val connectedDeviceName: String? = null,
@@ -26,4 +37,6 @@ data class DashboardUiState(
     val isReadingTroubleCodes: Boolean = false,
     val detectedVin: String? = null,
     val detectedBrand: String? = null,
+    val ecuTestResults: List<EcuTestResult> = emptyList(),
+    val isTestingEcu: Boolean = false,
 )

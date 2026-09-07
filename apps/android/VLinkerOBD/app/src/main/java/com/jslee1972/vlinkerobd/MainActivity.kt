@@ -85,10 +85,9 @@ class MainActivity : ComponentActivity() {
                     onStopScan = viewModel::stopScan,
                     onConnect = viewModel::connect,
                     onDisconnect = viewModel::disconnect,
-                    onSelectBrand = viewModel::selectBrand,
                     onSendManualCommand = viewModel::sendManualCommand,
                     onClearLogs = viewModel::clearLogs,
-                    onReadTroubleCodes = viewModel::readTroubleCodes,
+                    onTestEcuSupport = viewModel::testEcuSupport,
                     dtcDescriptions = dtcDescriptions,
                     modifier = Modifier.fillMaxSize(),
                 )

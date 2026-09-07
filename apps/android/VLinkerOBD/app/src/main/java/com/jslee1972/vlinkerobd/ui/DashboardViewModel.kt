@@ -161,6 +161,59 @@ class DashboardViewModel(
         fastLoopPaused = false
     }
 
+    /**
+     * Runs a short, read-only sequence of probes to check what this ECU actually supports on the
+     * current connection: Mode 01 support bitmap, Mode 09 VIN, and UDS `22 F1 90` (Read Data By
+     * Identifier for the standard VIN DID) — the last one as an alternative VIN path for ECUs
+     * that don't implement Mode 09 but do speak UDS. If the plain `22F190` attempt is refused,
+     * retries once after explicitly requesting an extended diagnostic session (`1003`), since some
+     * ECUs gate service 0x22 outside the default session; the default session is restored (`1001`)
+     * afterwards either way.
+     */
+    fun testEcuSupport() {
+        scope.launch { performEcuSupportTest() }
+    }
+
+    private suspend fun performEcuSupportTest() {
+        if (_uiState.value.isTestingEcu) return
+        fastLoopPaused = true
+        _uiState.update { it.copy(isTestingEcu = true, ecuTestResults = emptyList()) }
+
+        val results = mutableListOf<EcuTestResult>()
+        results += runEcuTestStep("0100", "Mode 01 PID 支援位元圖（確認標準匯流排是否有回應）")
+        results += runEcuTestStep("0902", "Mode 09 讀取 VIN")
+        val plainUdsVin = runEcuTestStep("22F190", "UDS 讀取 VIN（DID F190）")
+        results += plainUdsVin
+
+        if (plainUdsVin.status == EcuTestStatus.NO_DATA || plainUdsVin.status == EcuTestStatus.NEGATIVE) {
+            queue.execute(ObdCommand("1003", ObdCommandKind.OBD))
+            results += runEcuTestStep("22F190", "UDS 讀取 VIN（切換至延伸診斷 Session 1003 後重試）")
+            queue.execute(ObdCommand("1001", ObdCommandKind.OBD))
+        }
+
+        _uiState.update { it.copy(ecuTestResults = results, isTestingEcu = false) }
+        fastLoopPaused = false
+    }
+
+    private suspend fun runEcuTestStep(command: String, description: String): EcuTestResult {
+        val result = queue.execute(ObdCommand(command, ObdCommandKind.OBD))
+        val raw = (result as? ObdCommandResult.Success)?.raw
+        appendLog("ECU 測試 $command -> $result")
+        if (raw == null) {
+            return EcuTestResult(command, description, null, EcuTestStatus.TIMEOUT, "逾時無回應")
+        }
+        return when (val status = ObdResponseParser.classify(raw)) {
+            ObdResponseStatus.NoData ->
+                EcuTestResult(command, description, raw, EcuTestStatus.NO_DATA, "NO DATA（ECU 未回應此服務/識別碼）")
+            is ObdResponseStatus.NegativeResponse ->
+                EcuTestResult(command, description, raw, EcuTestStatus.NEGATIVE, "拒絕：${status.messageZh}")
+            ObdResponseStatus.Unrecognized ->
+                EcuTestResult(command, description, raw, EcuTestStatus.UNRECOGNIZED, "無法解析的回應")
+            is ObdResponseStatus.Data ->
+                EcuTestResult(command, description, raw, EcuTestStatus.SUPPORTED, "有回應")
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
         stopPolling()
@@ -286,9 +339,17 @@ class DashboardViewModel(
         }
         if (pids.isEmpty()) return
 
+        val failureStreak = mutableMapOf<String, Int>()
         brandPollingJob = scope.launch {
+            var round = 0
             while (isActive) {
+                round++
                 for (pid in pids) {
+                    // A vehicle that never answers a PID (protocol doesn't support it, wrong ECU,
+                    // etc.) shouldn't keep getting asked every single cycle forever — that's pure
+                    // wasted bandwidth and log noise. Back off to an occasional retry instead.
+                    if ((failureStreak[pid.field] ?: 0) >= GIVE_UP_THRESHOLD && round % COOLDOWN_ROUNDS != 0) continue
+
                     while (fastLoopPaused) delay(POLL_INTERVAL_MS)
                     fastLoopPaused = true
                     pid.ecuHeader?.let { queue.execute(ObdCommand("ATSH$it", ObdCommandKind.AT)) }
@@ -298,8 +359,11 @@ class DashboardViewModel(
                     if (pid.ecuHeader != null) queue.execute(ObdCommand("ATSH00", ObdCommandKind.AT))
                     fastLoopPaused = false
                     if (value != null) {
+                        failureStreak[pid.field] = 0
                         val formatted = "%.1f %s".format(value, pid.unit)
                         _uiState.update { it.copy(extraReadings = it.extraReadings + (pid.field to formatted)) }
+                    } else {
+                        failureStreak[pid.field] = (failureStreak[pid.field] ?: 0) + 1
                     }
                     delay(BRAND_POLL_INTERVAL_MS)
                 }
@@ -311,16 +375,24 @@ class DashboardViewModel(
     private fun restartStandardPolling() {
         standardPollingJob?.cancel()
         if (standardExtraPids.isEmpty()) return
+        val failureStreak = mutableMapOf<String, Int>()
         standardPollingJob = scope.launch {
+            var round = 0
             while (isActive) {
+                round++
                 for (pid in standardExtraPids) {
+                    if ((failureStreak[pid.field] ?: 0) >= GIVE_UP_THRESHOLD && round % COOLDOWN_ROUNDS != 0) continue
+
                     while (fastLoopPaused) delay(POLL_INTERVAL_MS)
                     fastLoopPaused = true
                     val value = pollOnce(pid)
                     fastLoopPaused = false
                     if (value != null) {
+                        failureStreak[pid.field] = 0
                         val formatted = "%.1f %s".format(value, pid.unit)
                         _uiState.update { it.copy(standardReadings = it.standardReadings + (pid.field to formatted)) }
+                    } else {
+                        failureStreak[pid.field] = (failureStreak[pid.field] ?: 0) + 1
                     }
                     delay(BRAND_POLL_INTERVAL_MS)
                 }
@@ -380,5 +452,10 @@ class DashboardViewModel(
         private const val STALE_THRESHOLD = 5
         private val STANDARD_EXTRA_FIELDS = listOf("controlModuleVoltage", "coolantTempC", "timingAdvanceDegrees")
         private const val HISTORY_SIZE = 60
+        // A PID this vehicle never answers after this many consecutive tries stops being polled
+        // every round; it's retried once every COOLDOWN_ROUNDS rounds instead of forever wasting
+        // bandwidth (and flooding the log) on something the ECU has already shown it won't answer.
+        private const val GIVE_UP_THRESHOLD = 5
+        private const val COOLDOWN_ROUNDS = 20
     }
 }

@@ -73,6 +73,17 @@ object PidDisplayNames {
         "fuelInstantConsumptionLh" to "即時油耗",
         "fuelTripConsumptionL" to "本趟油耗",
         "remainingRangeKmPSA" to "剩餘可行駛里程",
+        // citroen-ev.json (Citroën/Peugeot EMP2 純電平台，取自 OVMS)
+        "evBatteryVoltageV" to "高壓電池電壓",
+        "evBatteryCurrentA" to "高壓電池電流",
+        "evBatteryMinCellVoltageV" to "電池最低單體電壓",
+        "evBatteryMaxCellVoltageV" to "電池最高單體電壓",
+        "evBatteryAvailableKWh" to "可用電量",
+        "evBatterySohPercent" to "電池健康度 (SOH)",
+        "evAmbientTempC" to "外部氣溫（EV）",
+        "evBatteryTempC" to "高壓電池溫度",
+        "evDcDcConverterTempC" to "DC-DC 轉換器溫度",
+        "evOnboardChargerTempC" to "車載充電器溫度",
         // mazda.json
         "tire1PressurePSI" to "胎壓 1",
         "tire2PressurePSI" to "胎壓 2",

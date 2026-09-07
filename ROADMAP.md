@@ -33,13 +33,13 @@
 - [ ] Volkswagen
 
 ## Phase 5 — EV / Hybrid
-- [ ] Mode 22
-- [ ] SOC
-- [ ] HV voltage
-- [ ] HV current
-- [ ] battery power
-- [ ] battery temperature
-- [ ] SOH
+- [x] Mode 22（`shared/vehicle-profiles/citroen-ev.json`，Citroën/Peugeot 純電 EMP2 平台，取自 OVMS v3 `vehicle_fiatedoblo` 模組原始碼，詳見 vehicle-profile-schema.md 第十四輪）
+- [ ] SOC（OVMS 原始碼本身標註「未使用，因為改用 CAN frame 0x3a8 廣播的值」，Mode 22 DID `0xd410` 只是校正值非主要來源，暫不收錄）
+- [x] HV voltage（`citroen-ev.json`：`evBatteryVoltageV`，僅 Citroën/Peugeot EV）
+- [x] HV current（`citroen-ev.json`：`evBatteryCurrentA`，僅 Citroën/Peugeot EV）
+- [ ] battery power（衍生值＝電壓×電流，不是單一 DID，尚未實作）
+- [x] battery temperature（`citroen-ev.json`：`evBatteryTempC`，僅 Citroën/Peugeot EV）
+- [x] SOH（`citroen-ev.json`：`evBatterySohPercent`，僅 Citroën/Peugeot EV）
 
 ## Phase 6 — Product features
 - [ ] CSV logging

@@ -275,6 +275,67 @@ class DashboardViewModelTest {
     }
 
     @Test
+    fun ecuSupportTestRunsAllProbesAndRecordsSuccess() = runTest(dispatcher) {
+        val client = FakeBleObdClient()
+        val viewModel = DashboardViewModel(client, universalProfile, externalScope = backgroundScope)
+
+        client.completeInitAndSkipVin() // leaves an in-flight rpm poll
+
+        viewModel.testEcuSupport()
+        runCurrent() // pauses the fast loop; "0100" is queued behind the in-flight rpm poll
+
+        client.respondToNextWrite("41 0C 00 00\r>") // completes the in-flight rpm poll
+        assertEquals("0100\r", client.writes.last())
+
+        client.respondToNextWrite("41 00 BE 1F A8 13\r>")
+        assertEquals("0902\r", client.writes.last())
+
+        client.respondToNextWrite("49 02 01 31 48 47 43 4D 38 32 36 33 33 41 31 32 33 34 35 36\r>")
+        assertEquals("22F190\r", client.writes.last())
+
+        client.respondToNextWrite("62 F1 90 31 48 47 43 4D 38 32 36 33 33 41 31 32 33 34 35 36\r>")
+
+        val results = viewModel.uiState.value.ecuTestResults
+        assertEquals(3, results.size)
+        assertEquals(listOf("0100", "0902", "22F190"), results.map { it.command })
+        assertTrue(results.all { it.status == EcuTestStatus.SUPPORTED })
+        assertEquals(false, viewModel.uiState.value.isTestingEcu)
+    }
+
+    @Test
+    fun ecuSupportTestRetriesUdsVinAfterExtendedSessionWhenRefused() = runTest(dispatcher) {
+        val client = FakeBleObdClient()
+        val viewModel = DashboardViewModel(client, universalProfile, externalScope = backgroundScope)
+
+        client.completeInitAndSkipVin() // leaves an in-flight rpm poll
+
+        viewModel.testEcuSupport()
+        runCurrent()
+
+        client.respondToNextWrite("41 0C 00 00\r>") // completes the in-flight rpm poll
+        client.respondToNextWrite("41 00 BE 1F A8 13\r>") // 0100
+        client.respondToNextWrite("NO DATA\r>") // 0902 unsupported
+        assertEquals("22F190\r", client.writes.last())
+
+        client.respondToNextWrite("7F 22 11\r>") // plain 22F190 refused -> service not supported
+        assertEquals("1003\r", client.writes.last())
+
+        client.respondToNextWrite("50 03\r>") // extended diagnostic session accepted
+        assertEquals("22F190\r", client.writes.last())
+
+        client.respondToNextWrite("62 F1 90 31 48 47 43 4D 38 32 36 33 33 41 31 32 33 34 35 36\r>")
+        assertEquals("1001\r", client.writes.last()) // restores the default session
+
+        client.respondToNextWrite("50 01\r>")
+
+        val results = viewModel.uiState.value.ecuTestResults
+        assertEquals(4, results.size)
+        assertEquals(EcuTestStatus.NEGATIVE, results[2].status)
+        assertEquals(EcuTestStatus.SUPPORTED, results[3].status)
+        assertEquals(false, viewModel.uiState.value.isTestingEcu)
+    }
+
+    @Test
     fun readTroubleCodesDecodesResponseIntoState() = runTest(dispatcher) {
         val client = FakeBleObdClient()
         val viewModel = DashboardViewModel(client, universalProfile, externalScope = backgroundScope)
