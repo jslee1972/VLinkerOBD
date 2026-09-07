@@ -28,7 +28,7 @@
 
 ## 廠牌 PID 輪詢
 
-選擇 Mazda／Ford／Honda 等廠牌 profile 後，`DashboardViewModel.restartBrandPolling()` 會用獨立的慢速 ticker（每個 PID 之間間隔 3 秒）輪詢，需要 `ecuHeader`/`ecuReceiveFilter` 時先送 `ATSH<header>`／`ATCRA<filter>`，查完送 `ATCRA`／`ATSH00` 還原，過程中會暫停快速的車速/轉速輪詢（共用 `fastLoopPaused` 旗標），避免搶佔或互相干擾。
+選擇 Mazda／Ford／Honda／Citroen／Peugeot 等廠牌 profile 後，`DashboardViewModel.restartBrandPolling()` 會用獨立的慢速 ticker（每個 PID 之間間隔 3 秒）輪詢，需要 `ecuHeader`/`ecuReceiveFilter` 時先送 `ATSH<header>`／`ATCRA<filter>`，查完送 `ATCRA`／`ATSH00` 還原，過程中會暫停快速的車速/轉速輪詢（共用 `fastLoopPaused` 旗標），避免搶佔或互相干擾。
 
 ## 故障碼讀取（Mode 03）
 
@@ -44,14 +44,14 @@
 - 無故障碼時顯示安靜的「無故障碼」文字，不彈窗。
 - 說明文字來自 `DtcDescriptions`，分層查詢（見 `shared/dtc-codes/README.md`）：
   1. 內建約 60 個常見通用碼的繁體中文翻譯（已與下面的英文資料庫抽查比對一致）。
-  2. 查不到中文時，若目前選擇的廠牌（Mazda/Ford/Honda）有對應私有碼，顯示該廠牌的英文說明，標註「英文原文，尚無中文翻譯」。
+  2. 查不到中文時，若目前選擇的廠牌（Mazda/Ford/Honda/Citroen/Peugeot）有對應私有碼，顯示該廠牌的英文說明，標註「英文原文，尚無中文翻譯」。
   3. 再查不到，退回 SAE J2012 通用碼英文資料庫（9,415 筆），同樣標註英文原文。
   4. 都查不到才顯示「尚無內建說明」，不會編造翻譯或說明。
   英文資料取自 [Wal33D/dtc-database](https://github.com/Wal33D/dtc-database)（MIT License），同步到 `apps/android/VLinkerOBD/app/src/main/assets/dtc-codes/`；`MainActivity.onCreate` 同步載入，實測 ~50ms，不會卡住主執行緒。
 
 ## 自動辨識車款（Mode 09 VIN）
 
-初始化完成後、開始輪詢前，`DashboardViewModel` 會送一次 `0902`（Mode 09 PID 02＝VIN）。`ObdResponseParser.parseVin()` 解析出 17 碼 VIN 後，`VehicleBrandDetector` 依 VIN 前 3 碼（WMI，World Manufacturer Identifier，ISO 3780）比對廠牌；若偵測到的廠牌剛好有對應的私有 PID profile（目前是 Mazda／Ford／Honda），自動呼叫 `selectBrand()` 切換，使用者仍可事後用下拉選單手動覆蓋。查不到 VIN（車輛不支援 Mode 09）或 WMI 不在表內都不會中斷流程，只記 log 並維持通用 profile。
+初始化完成後、開始輪詢前，`DashboardViewModel` 會送一次 `0902`（Mode 09 PID 02＝VIN）。`ObdResponseParser.parseVin()` 解析出 17 碼 VIN 後，`VehicleBrandDetector` 依 VIN 前 3 碼（WMI，World Manufacturer Identifier，ISO 3780）比對廠牌；若偵測到的廠牌剛好有對應的私有 PID profile（目前是 Mazda／Ford／Honda／Citroen／Peugeot），自動呼叫 `selectBrand()` 切換，使用者仍可事後用下拉選單手動覆蓋。查不到 VIN（車輛不支援 Mode 09）或 WMI 不在表內都不會中斷流程，只記 log 並維持通用 profile。
 
 `VehicleBrandDetector` 的 WMI 對照表是常見真實碼的整理，不是完整清單（大廠依廠區/年份/車型會有數十組 WMI），僅供自動預選與畫面標示參考。
 

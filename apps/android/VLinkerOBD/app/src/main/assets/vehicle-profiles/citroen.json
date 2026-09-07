@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 3,
+  "profileId": "citroen-ds4-ep6fdtx-bsi2010",
+  "brand": "Citroen",
+  "displayNameZh": "Citroën/Peugeot (PSA) 私有 PID",
+  "notes": "取自 nico1080/OBD-LCD-display-for-PSA（單一作者實測，非社群多車驗證），在 2016 Citroën DS4（EP6FDTX 引擎、BSI2010 車身電腦）上確認可用。PSA 集團（Peugeot/Citroën/DS/Opel/Vauxhall）常見共用引擎與車身電腦世代，同款引擎/BSI 的其他廠徽車型很可能適用相同 DID，但未逐一實測。標記 verified: forum-partial，跟 Mazda 同等級。",
+  "pids": [
+    {"request": "22D400", "field": "psaRpm", "unit": "rpm", "ecuHeader": "6A8", "ecuReceiveFilter": "688", "formula": "(A*256)+B", "verified": "forum-partial"},
+    {"request": "22D47E", "field": "turboPressureBar", "unit": "bar", "ecuHeader": "6A8", "ecuReceiveFilter": "688", "formula": "((A*256)+B)/12500", "verified": "forum-partial"},
+    {"request": "22D48D", "field": "turboPressureSetpointBar", "unit": "bar", "ecuHeader": "6A8", "ecuReceiveFilter": "688", "formula": "((A*256)+B)/12500", "verified": "forum-partial"},
+    {"request": "22D47F", "field": "turboTempC", "unit": "degC", "ecuHeader": "6A8", "ecuReceiveFilter": "688", "formula": "(((A*256)+B)*0.0234375)-273.15", "verified": "forum-partial"},
+    {"request": "22D4D9", "field": "mapPressureBar", "unit": "bar", "ecuHeader": "6A8", "ecuReceiveFilter": "688", "formula": "((A*256)+B)*0.078125/100", "verified": "forum-partial"},
+    {"request": "22D411", "field": "mapTempC", "unit": "degC", "ecuHeader": "6A8", "ecuReceiveFilter": "688", "formula": "A*0.75-48", "verified": "forum-partial"},
+    {"request": "22D429", "field": "oilPressureBar", "unit": "bar", "ecuHeader": "6A8", "ecuReceiveFilter": "688", "formula": "(((A*256)+B)*0.00076294)-0.25", "verified": "forum-partial"},
+    {"request": "22D728", "field": "engineTorqueNm", "unit": "Nm", "ecuHeader": "6A8", "ecuReceiveFilter": "688", "formula": "((A*256)+B)/16", "verified": "forum-partial"},
+    {"request": "22D409", "field": "gearRaw", "unit": "raw", "ecuHeader": "6A8", "ecuReceiveFilter": "688", "formula": "A", "verified": "forum-partial"},
+
+    {"request": "22D610", "field": "tireFrontLeftPressureBar", "unit": "bar", "ecuHeader": "6AF", "ecuReceiveFilter": "68F", "formula": "((A*256)+B)/1000", "verified": "forum-partial"},
+    {"request": "22D60F", "field": "tireFrontRightPressureBar", "unit": "bar", "ecuHeader": "6AF", "ecuReceiveFilter": "68F", "formula": "((A*256)+B)/1000", "verified": "forum-partial"},
+    {"request": "22D612", "field": "tireRearLeftPressureBar", "unit": "bar", "ecuHeader": "6AF", "ecuReceiveFilter": "68F", "formula": "((A*256)+B)/1000", "verified": "forum-partial"},
+    {"request": "22D611", "field": "tireRearRightPressureBar", "unit": "bar", "ecuHeader": "6AF", "ecuReceiveFilter": "68F", "formula": "((A*256)+B)/1000", "verified": "forum-partial"},
+    {"request": "22D60E", "field": "tireFrontLeftTempC", "unit": "degC", "ecuHeader": "6AF", "ecuReceiveFilter": "68F", "formula": "A-50", "verified": "forum-partial"},
+    {"request": "22D60D", "field": "tireFrontRightTempC", "unit": "degC", "ecuHeader": "6AF", "ecuReceiveFilter": "68F", "formula": "A-50", "verified": "forum-partial"},
+    {"request": "22D60C", "field": "tireRearLeftTempC", "unit": "degC", "ecuHeader": "6AF", "ecuReceiveFilter": "68F", "formula": "A-50", "verified": "forum-partial"},
+    {"request": "22D60B", "field": "tireRearRightTempC", "unit": "degC", "ecuHeader": "6AF", "ecuReceiveFilter": "68F", "formula": "A-50", "verified": "forum-partial"},
+
+    {"request": "22D912", "field": "outsideTempC", "unit": "degC", "ecuHeader": "752", "ecuReceiveFilter": "652", "formula": "A*0.5-40", "verified": "forum-partial"},
+    {"request": "22DA46", "field": "auxBatteryVoltageV", "unit": "V", "ecuHeader": "752", "ecuReceiveFilter": "652", "formula": "((A*256)+B)/1000", "verified": "forum-partial"},
+    {"request": "22DA47", "field": "auxBatteryTempC", "unit": "degC", "ecuHeader": "752", "ecuReceiveFilter": "652", "formula": "A-40", "verified": "forum-partial"},
+    {"request": "22DB83", "field": "engineOilTempPSA_C", "unit": "degC", "ecuHeader": "752", "ecuReceiveFilter": "652", "formula": "A-40", "verified": "forum-partial"},
+    {"request": "22D8C4", "field": "fuelLevelPercentPSA", "unit": "%", "ecuHeader": "752", "ecuReceiveFilter": "652", "formula": "((A*256)+B)/100", "verified": "forum-partial"},
+    {"request": "22D8C7", "field": "fuelInstantConsumptionLh", "unit": "L/h", "ecuHeader": "752", "ecuReceiveFilter": "652", "formula": "((A*256)+B)/10", "verified": "forum-partial"},
+    {"request": "22D8C8", "field": "fuelTripConsumptionL", "unit": "L", "ecuHeader": "752", "ecuReceiveFilter": "652", "formula": "((A*256)+B)/10", "verified": "forum-partial"},
+    {"request": "22D8E1", "field": "remainingRangeKmPSA", "unit": "km", "ecuHeader": "752", "ecuReceiveFilter": "652", "formula": "(A*256)+B", "verified": "forum-partial"}
+  ]
+}

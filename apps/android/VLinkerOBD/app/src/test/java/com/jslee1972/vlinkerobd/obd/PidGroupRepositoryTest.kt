@@ -94,6 +94,29 @@ class PidGroupRepositoryTest {
     }
 
     @Test
+    fun loadsCitroenBrandProfileWithPerPidEcuHeaders() {
+        val profile = repository().loadBrand("citroen.json")
+
+        assertEquals("Citroen", profile.brand)
+        assertTrue(profile.models.isEmpty())
+
+        val rpm = profile.pids.single { it.field == "psaRpm" }
+        assertEquals("22D400", rpm.request)
+        assertEquals("6A8", rpm.ecuHeader)
+        assertEquals("688", rpm.ecuReceiveFilter)
+        assertEquals("(A*256)+B", rpm.formula)
+        assertEquals("forum-partial", rpm.verified)
+
+        val tirePressure = profile.pids.single { it.field == "tireFrontLeftPressureBar" }
+        assertEquals("6AF", tirePressure.ecuHeader)
+        assertEquals("68F", tirePressure.ecuReceiveFilter)
+
+        val auxBattery = profile.pids.single { it.field == "auxBatteryVoltageV" }
+        assertEquals("752", auxBattery.ecuHeader)
+        assertEquals("652", auxBattery.ecuReceiveFilter)
+    }
+
+    @Test
     fun parsesMinimalInlineProfile() {
         val profile = PidGroupRepository.parseProfile(
             """

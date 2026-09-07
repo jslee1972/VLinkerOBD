@@ -61,10 +61,16 @@ class MainActivity : ComponentActivity() {
 
         val repository = PidGroupRepository { path -> assets.open(path).bufferedReader().use { it.readText() } }
         val universalProfile = repository.loadUniversal()
+        // Citroen/Peugeot share the same PSA-platform engine/BSI generation this profile was
+        // reverse-engineered from (see shared/vehicle-profiles/citroen.json notes), so both
+        // detected brand names map to the one loaded profile.
+        val psaProfile = repository.loadBrand("citroen.json")
         val brandProfiles = mapOf(
             "Mazda" to repository.loadBrand("mazda.json"),
             "Ford" to repository.loadBrand("ford.json"),
             "Honda" to repository.loadBrand("honda.json"),
+            "Citroen" to psaProfile,
+            "Peugeot" to psaProfile,
         )
         val bleClient = BleObdManager(applicationContext)
         val deviceMemory = SharedPreferencesDeviceMemory(applicationContext)

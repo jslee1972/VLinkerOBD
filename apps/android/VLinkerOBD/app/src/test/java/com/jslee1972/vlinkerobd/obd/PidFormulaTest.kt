@@ -69,6 +69,24 @@ class PidFormulaTest {
     }
 
     @Test
+    fun evaluatesPsaTurboTempFormula() {
+        // (((A*256)+B)*0.0234375)-273.15; raw=25600 -> 600.0K -> 326.85C
+        assertEquals(326.85, PidFormula.evaluate("(((A*256)+B)*0.0234375)-273.15", listOf(100, 0))!!, 0.001)
+    }
+
+    @Test
+    fun evaluatesPsaMapPressureFormula() {
+        // ((A*256)+B)*0.078125/100; raw=25600 -> 20.0 bar
+        assertEquals(20.0, PidFormula.evaluate("((A*256)+B)*0.078125/100", listOf(100, 0))!!, 0.001)
+    }
+
+    @Test
+    fun evaluatesPsaOilPressureFormula() {
+        // (((A*256)+B)*0.00076294)-0.25; raw=25600 -> ~19.28 bar
+        assertEquals(19.281, PidFormula.evaluate("(((A*256)+B)*0.00076294)-0.25", listOf(100, 0))!!, 0.001)
+    }
+
+    @Test
     fun returnsNullWhenNotEnoughBytes() {
         assertNull(PidFormula.evaluate("((A*256)+B)/4", listOf(13)))
     }
