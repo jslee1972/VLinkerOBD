@@ -124,3 +124,66 @@ Citroën/Peugeot 目前已連續四輪查證（`autowp/psa-can` 不存在、OVMS
 `nico1080/OBD-LCD-display-for-PSA`：真實存在（Arduino + MCP2515 CAN 模組專案，18 星）。**這次是真的可用的資料源**——原始碼 `CanRequest(TxID, RxID, DID高位, DID低位, 長度)` 送出的封包是 `03 22 <DID_hi> <DID_lo>`，正是標準 **UDS Mode 22（ReadDataByIdentifier）** 單幀請求，回應 `62 <DID回音> <資料>`，跟本專案 Ford/Honda 現有的存取方式完全相同（不是被動監聽）。已從原始碼整理出引擎（header `6A8`/`688`）、胎壓 TPMS（`6AF`/`68F`）、車身 BSI（`752`/`652`）三個 ECU 共 24 個 PID，公式都是單/雙位元組四則運算，建了 `citroen.json`（`verified: "forum-partial"`，比照 Mazda 等級——單一作者在自己的 2016 Citroën DS4，EP6FDTX 引擎＋BSI2010 車身電腦上實測，非社群多車驗證）。MainActivity 把這份 profile 同時掛在「Citroen」與「Peugeot」兩個偵測到的廠牌名稱下（PSA 集團同引擎/車身電腦世代常見共用 DID，但只有 Citroën DS4 這一台車實測過）。
 
 **教訓**：同一個廠牌不同輪查證可能得到完全相反的結論——本輪能找到可用資料，純粹是因為這個作者用的是主動 UDS request/response，而不是前四輪那些被動監聽 CAN bus 的專案。之後查其他還沒查到資料的廠牌，除了看資料存不存在，更要先確認是不是走這條「主動送指令、等回應」的路。
+
+### 2026-09-07（第六輪：使用者貼上一份 BMW Mode 22 DID 表，含 Engine Coolant Temp `22F105`、Engine Oil Temp `222F05`/`D946`、Transmission Temp `434E`、Boost Pressure `2BBC`、DPF Soot Mass `281A`，header 皆為 `7E0`/`7E1`）—— 表格本身查證後判定不可信
+
+先確認引用連結是否真實存在：`uholeschak/ediabaslib`、`radelbro/BimmerDis`、`OBDb/BMW-4-Series`、`openxc/uds-c`、`kaiwen-z/bmw-enet-tool-public-wenz77-on-bimmerforums`、`secdev/scapy`（`contrib/automotive/bmw/definitions.py`）皆**真實存在**——這次連結沒有造假。
+
+但表格裡的六組 DID 是否真的對得上任何一組真車擷取資料，實際下載 `OBDb` 組織下已有真實訊號資料的 8 個 BMW repo（通用 `OBDb/BMW` 26KB、`BMW-3-Series`、`BMW-5-Series`、`BMW-X3`、`BMW-X5`、`BMW-i3`，共約 120KB 已擷取的真實 DID 清單；另外 `BMW-E91`/`BMW-330e`/`BMW-M3`/`BMW-1-Series` 目前是空的，還沒人填資料）逐一搜尋 `F105`/`2F05`/`D946`/`434E`/`2BBC`/`281A` 這六組 DID，**一個都沒找到**。真實資料裡的 DID 集中在 `D1xx`/`DAxx`/`DDxx`/`40xx`/`43xx`/`45xx`/`4Cxx`/`57xx`/`58xx`/`5Axx`/`63xx` 這些完全不同的號碼區間，header 也不是簡單的 `7E0`/`7E1`，而是 `6F1`（tester 位址）搭配 `rax`/`eax`（回應位址／功能定址位元組）的 functional addressing，比表格描述的定址方式複雜。判定：這份表格是論壇（bimmerpost）拼湊/過時/或直接錯誤的資訊，**不採用**。
+
+**後續使用者追問「這幾個數值真的沒有用？」，做了更進一步的查證**：直接下載 `secdev/scapy` 的 `scapy/contrib/automotive/bmw/definitions.py`（真實的 BMW UDS 逆向工程程式碼，非文件轉述）逐字搜尋六組 DID——`F105` **真的存在**，但綁定的是 `SVK`（`SVK_Backup_02`）這個資料結構，內容是 ECU 硬體/軟體/校正碼版本與燒錄狀態記錄（`HWEL`/`SWFL`/`CAFD`/`BTLD` 等欄位、燒錄相容性檢查結果），**跟水溫毫無關係**——證實表格把這個 DID 的用途完全寫錯，不是「查無資料」而是「查到但對應錯誤」。另外五組（`2F05`/`D946`/`434E`/`2BBC`/`281A`）在 `uholeschak/ediabaslib`（另一個真實的 BMW/VAG 診斷函式庫，程式碼量遠大於 scapy）裡雖然 GitHub code search 有命中，但逐一打開確認後全部是**巧合的子字串**（出現在 `ELM327V15.hex` 韌體二進位檔、`VagAdaptionActivity.cs`——VAG 是福斯集團不是 BMW、`main.lfm` UI 版面檔裡，都不是 DID 定義）。結論不變：**這份表格不可信，不採用**，但現在有更具體的反例可以佐證，不只是「找不到」。
+
+架構性說明本身沒問題（Mode 22 + 4 位元 DID + 切換 ECU header 的概念、`ATSP6` 走 ISO 15765-4 CAN 500kbit、UDS 正回應前綴 `62`）是正確的通用知識，可以保留參考；附的 Kotlin 範例是示意用的傳統 blocking classic Bluetooth socket + `Thread.sleep`，跟本專案 BLE GATT + coroutine + `ObdCommandQueue` 的架構不同，不能照抄。
+
+`OBDb` 組織本身（跟現有 Ford/Honda profile 同一個資料源）底下有近 30 個 BMW 車型 repo，是目前看過最像樣的 BMW 資料候選，但要真正拿來用還有兩個前提沒解決：(1) 定址方式是 `hdr`/`rax`/`eax` functional addressing，目前 app 的 `ecuHeader`/`ecuReceiveFilter`（`ATSH`/`ATCRA`）只支援單純的實體定址，需要先擴充；(2) 多數車型 repo 目前是空的，要用哪一個得先對到使用者實際車型且該 repo 已有資料。暫不建立 profile，待有具體車型需求時再評估是否值得擴充定址架構。
+
+### 2026-09-07（第七輪：使用者上傳 `BMW 328d Full.csv.txt` + 官方 `SAE J1979-DA (2011-10)` PDF）—— 不是 BMW 專屬資料，但驗證出 14 個真正可用的標準延伸 PID
+
+使用者上傳的 CSV 檔名雖然叫 BMW 328d，但逐一比對隨附的 **SAE J1979-DA 官方標準全文 PDF**（用 `pdftotext` 解出文字，非網路二手轉述）後，發現 CSV 裡的每一個 `ModeAndPID`（`$46`/`$0F`/`$77`/`$24`/`$10`/`$33`/`$70`/`$73`/`$7A`/`$6D`/`$5E`/`$6B`/`$78`/`$83`）**全部是標準 Mode 01 延伸 PID**（柴油/排放相關，J1979 後期版本才加入），不是 BMW 私有 Mode 22 UDS 資料——CSV 裡每一列的 Header 欄位也都寫 `Auto`，證實不需要切換 ECU header。這代表這份資料**跟上一輪查證的 BMW Mode 22 問題無關**，不能拿來當作「做 BMW 專屬 profile」的理由，但可以直接擴充 `universal-obd2.json`（因為是標準 PID，任何相容車輛都可能支援，不限 BMW）。
+
+逐一對照官方規格書重新推導公式（不是照抄 CSV，CSV 本身的公式有錯）：
+- `$24`（Lambda）CSV 寫 `*000031`（小數點被吃掉），官方係數其實是 `0.0000305`——CSV 格式壞掉但數值方向對。
+- `$83`（NOx）CSV 寫 `(((B*256)+C)*0.032044)-100` 這種帶偏移量的公式，但官方規格明確寫 NOx 濃度是**純 1:1 ppm，無縮放無偏移**——CSV 這個公式是錯的，採用官方版本 `(B*256)+C`。
+- `$7A`（DPF 壓力）的「差壓」（B,C）在規格書裡是 **signed 16-bit**，超出目前公式引擎能力，跳過；但「進氣壓力」（D,E）、「出氣壓力」（F,G）是無號值，可以用。
+- `$6B`（EGR 溫度）規格書顯示縮放比例（1°C 或 4°C per bit）依另一個旗標位元而定，是條件式邏輯，公式引擎不支援分支判斷，跳過。
+
+最後新增到 `universal-obd2.json` 的 14 個欄位（全部單位改回公制，不用 CSV 的 psi/°F 換算）：`chargeAirCoolerTempC`、`lambdaBank1Sensor1`、`boostPressureCommandedKPA`/`boostPressureActualKPA`、`exhaustPressureBank1KPA`、`dpfInletPressureKPA`/`dpfOutletPressureKPA`、`fuelRailPressureCommandedKPA`/`fuelRailPressureActualKPA`、`engineFuelRateLPH`、`exhaustGasTempBank1Sensor1C`/`Sensor2C`/`Sensor3C`、`noxBank1Sensor1PPM`。其中 `$78`/`$83` 需要用到 E/F/G 位元組，順便把 `PidFormula` 的變數範圍從 `A-D` 放寬到 `A-Z`（純字母對應位元組索引，沒有額外邏輯要改）。
+
+**教訓**：附件裡的 PID 表格即使是照著正確的官方標準寫的，也不能直接照抄公式——這份 CSV 至少有兩處數值錯誤（小數點掉字、NOx 公式整個錯），只有拿到原始規格書逐條核對才敢用。「來源看起來很正式」跟「內容真的正確」是兩回事。
+
+### 2026-09-07（第八輪：使用者貼上 BMW ECU 定址表 + Service 0x19 六位數 DTC 對照表）—— 結果混合，DTC 代碼部分可信，定址表未驗證
+
+這次貼的是兩塊：(1) 一份「模組代號 → `ATSH<header>`」對照表（DME=`7E0`、EGS=`7E1`、DSC=`7E2`、CAS=`744`、KOMBI=`760` 等），(2) UDS Service `0x19`（ReadDTCInformation）的封包格式說明 + 12 筆 BMW 六位數原廠故障碼對照表。
+
+**Service 0x19 封包格式**：跟前一則回覆裡從 ISO 14229 標準推導的說明一致（`59 02 <mask> <3 bytes DTC><1 byte status>` 逐筆重複），這部分是公開標準，沒有查證問題。
+
+**DTC 代碼表**：用 WebSearch 逐筆查證（找獨立、互不相關的真實車主論壇貼文，不是同一來源複製）：
+- ✅ **確認可信**：`E12C01`/`E12C03`（油箱浮筒感知器左/右）——BimmerPost、JustAnswer、YouTube 影片，多位不同車主（535i、X3、750i、335i）回報一致；`D904`（K-CAN 線路故障）多個獨立論壇串一致；`140010`（多缸失火偵測）BimmerPost、ecutesting.com 文字描述幾乎一致；`120308`（增壓合理性過低，注意跟使用者這輪貼的 `120301` 只差最後一碼，`120308` 才是查到佐證的那組）。
+- ⚠️ **查無獨立佐證**（不代表假，只是找不到）：`CF18A1`、`130104`、`118001`、`D35A53`、`20A105`、`120301`。
+- ❌ **查到衝突資訊**：`804033`，使用者表格寫「Terminal 15N 異常斷電」，但查到的獨立來源顯示這組代碼實際是「ZSG 喚醒輸入阻擋保護」，兩者不是同一件事，不採用。
+
+**ECU 定址表**：拿本專案第七輪已下載的 OBDb 真實資料（涵蓋 BMW 通用/3-Series/4-Series/5-Series/X3/X5/i3，都是 2018 年後新世代車）交叉比對，**全部使用 `6F1`（tester 位址）+ `rax`（回應位址，如 `607`/`60D`/`612`/`618`/`629`/`640`/`660`）的 functional addressing**，跟使用者這份表格的 `ATSH740`/`ATSH744`/`ATSH7E2` 這種單一實體位址完全對不上。研判使用者這份表格可能對應**較舊世代**（E-series 或初期 F-series，換用新閘道器架構前），但目前沒有那個世代的真實資料可以逐條核對，**狀態是「未驗證」，不是「已驗證正確」也不是「已驗證錯誤」**——問過使用者實際車型/底盤代號以便判斷該用哪種定址，使用者暫時沒有偏好/不確定，故此表格暫不採用、也不否定，留待確認車型或有其他獨立來源時再查。
+
+**結論**：DTC 代碼表裡確認可信的 5 筆（`E12C01`、`E12C03`、`D904`、`140010`、`120308`）可以考慮以 `verified: "forum-partial"` 等級收錄成 BMW 專屬六位數 DTC 查詢表（純顯示層查表，不需要先解決定址問題就能做）；但要能透過 BLE 實際「讀到」這些代碼（尤其是非引擎模組如 KOMBI/CAS 回報的代碼），仍卡在 ECU 定址表未驗證這一關。Service 0x19 本身的標準封包解析（不含 BMW 6 位數查表）可以獨立先做，因為是公開標準、不依賴任何未驗證資料。
+
+### 2026-09-07（第九輪：使用者提供 BMW 原廠維修手冊掃描頁（Bentley Publishers 授權版），改抽取 Wal33D 資料庫的 BMW 子集，收錄成 `bmw.json`）
+
+使用者這次貼的是 **Bentley Publishers**（BMW 原廠維修手冊北美授權出版商，不是網路論壇）掃描頁，內容是標準格式「P-code + BMW 內部代碼 + 英文定義」的 DTC 對照表，用詞（`EWS` 防盜、`DISA` 差動進氣、`VANOS`、`DMTL`）都是真實 BMW 術語。**關鍵是這批碼是標準 P-code 格式**，跟現有 Mode 03/07/0A 讀取機制完全相容，不需要 Mode 22、不需要定址表，是目前所有 BMW 查證裡唯一不卡在架構問題上的資料。
+
+因為手冊是截圖而非原始檔，逐字視覺辨識密集 hex 表格風險高（截圖裡甚至有原始掃描本身的 OCR 誤讀，如 `P080I` 應為 `P0801`），改走更安全的路：發現 `shared/dtc-codes/README.md` 早就記錄「原始 `Wal33D/dtc-database` 涵蓋 BMW，只是之前沒有 BMW PID profile 所以沒抽取」——直接從這個已經驗證過的來源（跟 Ford/Mazda/Honda 同一個資料庫）抽出 BMW 子集（`data/source-data/bmw_codes.txt`，250 筆，全部是 P1xxx），比手動轉錄截圖可靠。抽查手冊截圖裡的 `P1123`、`P1511`、`P1512`、`P1513`、`P1090`、`P1620` 對照 Wal33D 的 BMW 子集，**全部一致**，兩個獨立來源互相印證。
+
+另外用手冊裡的「OBD II Standard Fault Codes」通用碼章節（P0100-P0804）抽查現有 `generic.json`，20 筆全部吻合，確認手冊本身可信、也再次確認截圖辨識沒有引入錯誤。
+
+**限制**：Wal33D 的 BMW 資料只有 P1xxx（250 筆），手冊裡的 P2xxx（DMTL 蒸發系統）、P3xxx（高壓噴油嘴，柴油引擎專屬）完全沒有涵蓋——這些只存在使用者的截圖裡，還沒有第二來源可以交叉驗證，暫不轉錄收錄。
+
+**已完成**：`shared/dtc-codes/bmw.json`（250 筆，`verified` 等級同 generic/ford/mazda/honda，因為都來自同一個已驗證資料庫）、同步 Android assets、`DtcDescriptions.load()` 預設 brands 清單加入 `"bmw"`、修正 `DashboardScreen.kt` 故障碼詳情對話框原本只看 `selectedBrand`（需要有 PID profile 才會被設定，BMW 沒有 profile 所以永遠不會生效）的問題，改成優先用 `selectedBrand`、沒有時退回 `detectedBrand`（單純 VIN 辨識，不需要 PID profile）。
+
+### 2026-09-07（第十輪：BMW P3xxx 手動轉錄 + 擴充其他 5 個廠牌的 DTC 說明）
+
+使用者確認「可以承擔辨識風險」，請求把手冊裡的 P2xxx/P3xxx 也加入。查證後 P2xxx 全部跟 `generic.json` 重複（不是私有碼，BMW 只是用自己的術語描述同一組通用碼），跳過；P3xxx（SAE 保留的廠牌自訂區間，跟 P1xxx 一樣）視覺辨識手冊掃描頁轉錄 67 筆，全部確認不在 `generic.json` 裡，加入 `bmw.json`（現在共 317 筆）。這批 P3xxx **沒有第二來源交叉驗證**，純靠視覺辨識，細節與跳過的疑似錯誤列見 `shared/dtc-codes/README.md`。
+
+同時確認「這批 DTC 資料是 Mode 03/07/0A（P-code）的範圍，跟 Mode 22／第六～八輪查證的定址問題無關，不需要擴充定址架構（項目 C）」——回答使用者的技術提問。
+
+既然 Wal33D 資料庫的可信度已經多次驗證（Ford/Mazda/Honda/BMW P1xxx 都抽查一致），使用者要求擴充其他廠牌。從同一個資料庫再抽取 Toyota（45 筆）、Mercedes-Benz（32 筆）、Volkswagen（528 筆）、Kia（76 筆）、Mitsubishi（34 筆）——這 5 家目前都**沒有**私有 PID profile，只提供故障碼說明（跟 BMW 一樣，靠 `detectedBrand` 而非 `selectedBrand` 生效）。`VehicleBrandDetector` 支援的 13 個廠牌裡，Audi、Hyundai、Peugeot、Citroën 這個資料庫沒有涵蓋，維持原狀。
+
+`DtcDescriptions.SUPPORTED_BRANDS` 新增為公開常數（`load()` 預設清單的單一來源），並在 App 右上角「⋮」選單加了「支援廠牌」項目，列出目前有即時參數（PID）跟有故障碼說明的廠牌清單，供使用者查閱。

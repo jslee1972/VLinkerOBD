@@ -29,7 +29,7 @@
 - [ ] profile schema
 - [ ] Toyota/Lexus
 - [ ] Hyundai/Kia
-- [ ] BMW
+- [ ] BMW（已查證：使用者貼的論壇 DID 表對不上 OBDb 真實擷取資料，不可信；OBDb 組織有近 30 個 BMW 車型 repo 但多數無資料，且用 functional addressing（hdr/rax/eax），需先擴充定址架構才能用，詳見 shared/protocol-docs/vehicle-profile-schema.md 第六輪）
 - [ ] Volkswagen
 
 ## Phase 5 — EV / Hybrid
