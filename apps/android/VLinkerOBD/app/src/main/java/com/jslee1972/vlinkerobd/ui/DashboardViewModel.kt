@@ -53,6 +53,12 @@ class DashboardViewModel(
     private val speedPid = universalProfile.pids.first { it.field == "speedKPH" }
     private val rpmPid = universalProfile.pids.first { it.field == "rpm" }
 
+    // Standard PIDs beyond speed/RPM that are always available (no brand profile needed), polled
+    // on a slow ticker like brand PIDs so they don't compete with the fast speed/RPM loop.
+    private val standardExtraPids = STANDARD_EXTRA_FIELDS.mapNotNull { field ->
+        universalProfile.pids.firstOrNull { it.field == field }
+    }
+
     private val _uiState = MutableStateFlow(
         DashboardUiState(availableBrands = listOf(UNIVERSAL_BRAND) + brandProfiles.keys),
     )
@@ -60,6 +66,7 @@ class DashboardViewModel(
 
     private var pollingJob: Job? = null
     private var brandPollingJob: Job? = null
+    private var standardPollingJob: Job? = null
 
     @Volatile
     private var fastLoopPaused = false
@@ -205,6 +212,7 @@ class DashboardViewModel(
             performTroubleCodeRead()
             startPolling()
             restartBrandPolling()
+            restartStandardPolling()
         }
     }
 
@@ -291,6 +299,27 @@ class DashboardViewModel(
         }
     }
 
+    /** Slow ticker for standard PIDs (battery voltage, coolant temp, timing advance) that need no ECU header. */
+    private fun restartStandardPolling() {
+        standardPollingJob?.cancel()
+        if (standardExtraPids.isEmpty()) return
+        standardPollingJob = scope.launch {
+            while (isActive) {
+                for (pid in standardExtraPids) {
+                    while (fastLoopPaused) delay(POLL_INTERVAL_MS)
+                    fastLoopPaused = true
+                    val value = pollOnce(pid)
+                    fastLoopPaused = false
+                    if (value != null) {
+                        val formatted = "%.1f %s".format(value, pid.unit)
+                        _uiState.update { it.copy(standardReadings = it.standardReadings + (pid.field to formatted)) }
+                    }
+                    delay(BRAND_POLL_INTERVAL_MS)
+                }
+            }
+        }
+    }
+
     private suspend fun pollOnce(pid: PidDefinition): Double? {
         val result = queue.execute(ObdCommand(pid.request, ObdCommandKind.OBD))
         val raw = (result as? ObdCommandResult.Success)?.raw
@@ -321,6 +350,8 @@ class DashboardViewModel(
         pollingJob = null
         brandPollingJob?.cancel()
         brandPollingJob = null
+        standardPollingJob?.cancel()
+        standardPollingJob = null
     }
 
     private fun connectionLabelFor(state: ConnectionState): String = when (state) {
@@ -339,5 +370,6 @@ class DashboardViewModel(
         private const val POLL_INTERVAL_MS = 200L
         private const val BRAND_POLL_INTERVAL_MS = 3000L
         private const val STALE_THRESHOLD = 5
+        private val STANDARD_EXTRA_FIELDS = listOf("controlModuleVoltage", "coolantTempC", "timingAdvanceDegrees")
     }
 }

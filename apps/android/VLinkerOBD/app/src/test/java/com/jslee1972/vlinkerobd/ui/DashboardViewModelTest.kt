@@ -287,6 +287,23 @@ class DashboardViewModelTest {
     }
 
     @Test
+    fun pollsStandardExtraPidsOnSlowTicker() = runTest(dispatcher) {
+        val client = FakeBleObdClient()
+        val profileWithCoolant = universalProfile.copy(
+            pids = universalProfile.pids + PidDefinition(request = "0105", field = "coolantTempC", unit = "degC", formula = "A-40"),
+        )
+        val viewModel = DashboardViewModel(client, profileWithCoolant, externalScope = backgroundScope)
+
+        client.completeInitAndSkipVin() // leaves an in-flight rpm poll; the coolant poll is queued behind it
+
+        client.respondToNextWrite("41 0C 00 00\r>") // completes rpm poll, cascades into the queued coolant poll
+        assertEquals("0105\r", client.writes.last())
+
+        client.respondToNextWrite("41 05 5A\r>") // coolant temp -> 0x5A(90) - 40 = 50 degC
+        assertEquals("50.0 degC", viewModel.uiState.value.standardReadings["coolantTempC"])
+    }
+
+    @Test
     fun autoConnectsToRememberedDeviceWhenSeenInScanResults() = runTest(dispatcher) {
         val client = FakeBleObdClient()
         val memory = FakeDeviceMemory(address = "AA:BB:CC:DD:EE:FF")
