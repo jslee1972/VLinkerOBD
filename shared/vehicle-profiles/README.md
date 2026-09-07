@@ -8,11 +8,11 @@ Schema 定義見 `shared/protocol-docs/vehicle-profile-schema.md`（v3）。
 
 ## 目前檔案
 
-- `universal-obd2.json`：標準 Mode 01 PID，任何車輛都適用，永遠載入。除核心 PID 外，也包含一批柴油/排放相關的 SAE J1979 延伸 PID（增壓、DPF 進/出氣壓力、燃油軌壓、排氣溫、NOx 等）——這些對照官方 J1979-DA 規格書逐條驗證過，車輛需有對應硬體（如 DPF）才會回應有意義的數值，詳見 schema 文件第七輪查證記錄。
+- `universal-obd2.json`：標準 Mode 01 PID，任何車輛都適用，永遠載入。除核心 PID 外，也包含一批柴油/排放相關的 SAE J1979 延伸 PID（增壓、DPF 進/出氣壓力、燃油軌壓、排氣溫、NOx 等）跟一批補充的常見延伸 PID（絕對負載、指令當量比、相對節氣門/踏板位置、乙醇燃料%、燃油軌絕對壓力、引擎扭矩 x3）——這些都對照官方 J1979-DA 規格書逐條驗證過，車輛需有對應硬體才會回應有意義的數值，詳見 schema 文件第七、十一輪查證記錄。規格書裡另外定義的 `$03`（燃油系統狀態）、`$51`（燃料種類）是列舉狀態值不是數字，`$64`（引擎扭矩曲線圖）是多點曲線圖不是單一數值，目前公式引擎只支援純數值 PID，這三個先跳過。
 - `mazda.json`：Mazda 私有胎壓 PID（Mode 22），依 `models` 分 Miata NC / RX-8 / MazdaSpeed6，各自需要不同的 `ecuHeader`。僅在論壇個案驗證過，`verified: "forum-partial"`。
 - `ford.json`：Ford Fiesta 里程、胎壓 x4、胎壓警示燈，取自 [OBDb](https://github.com/OBDb) 社群維護資料集，`verified: "community"`，用位元層級 `bitField` 描述（非 `formula`）。
 - `honda.json`：Honda Civic Hybrid SOC、高壓電池電壓/電流、水溫 x2、發電機占空比、里程，同樣取自 OBDb，`verified: "community"`，`bitField` 格式。
-- `citroen.json`：Citroën/Peugeot (PSA) 引擎渦輪/機油壓力、四輪胎壓/胎溫、車身電瓶/油量/剩餘里程，取自 [nico1080/OBD-LCD-display-for-PSA](https://github.com/nico1080/OBD-LCD-display-for-PSA)，`verified: "forum-partial"`——單一作者在 2016 Citroën DS4（EP6FDTX 引擎/BSI2010）實測，非社群多車驗證；App 裡同時對應「Citroen」與「Peugeot」兩個偵測到的廠牌。
+- `citroen.json`：Citroën/Peugeot (PSA) 引擎渦輪/機油壓力、四輪胎壓/胎溫、車身電瓶/油量/剩餘里程，取自 [nico1080/OBD-LCD-display-for-PSA](https://github.com/nico1080/OBD-LCD-display-for-PSA)，`verified: "forum-partial"`——單一作者在 2016 Citroën DS4（EP6FDTX 引擎/BSI2010）實測，非社群多車驗證；App 裡同時對應「Citroen」與「Peugeot」兩個偵測到的廠牌。原始來源另外還有 rpm/outside temp/engine oil temp/fuel level 四個 Mode 22 DID，因為跟 `universal-obd2.json` 的標準 Mode 01 PID 完全重複（同一件事、多切一次 ECU header），已移除，見 schema 文件第十二輪。
 
 ## 載入方式
 

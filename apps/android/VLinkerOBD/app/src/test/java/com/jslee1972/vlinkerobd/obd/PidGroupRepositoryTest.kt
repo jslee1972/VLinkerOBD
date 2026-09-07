@@ -100,12 +100,12 @@ class PidGroupRepositoryTest {
         assertEquals("Citroen", profile.brand)
         assertTrue(profile.models.isEmpty())
 
-        val rpm = profile.pids.single { it.field == "psaRpm" }
-        assertEquals("22D400", rpm.request)
-        assertEquals("6A8", rpm.ecuHeader)
-        assertEquals("688", rpm.ecuReceiveFilter)
-        assertEquals("(A*256)+B", rpm.formula)
-        assertEquals("forum-partial", rpm.verified)
+        val turboPressure = profile.pids.single { it.field == "turboPressureBar" }
+        assertEquals("22D47E", turboPressure.request)
+        assertEquals("6A8", turboPressure.ecuHeader)
+        assertEquals("688", turboPressure.ecuReceiveFilter)
+        assertEquals("((A*256)+B)/12500", turboPressure.formula)
+        assertEquals("forum-partial", turboPressure.verified)
 
         val tirePressure = profile.pids.single { it.field == "tireFrontLeftPressureBar" }
         assertEquals("6AF", tirePressure.ecuHeader)

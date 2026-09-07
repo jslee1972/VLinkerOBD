@@ -187,3 +187,15 @@ Citroën/Peugeot 目前已連續四輪查證（`autowp/psa-can` 不存在、OVMS
 既然 Wal33D 資料庫的可信度已經多次驗證（Ford/Mazda/Honda/BMW P1xxx 都抽查一致），使用者要求擴充其他廠牌。從同一個資料庫再抽取 Toyota（45 筆）、Mercedes-Benz（32 筆）、Volkswagen（528 筆）、Kia（76 筆）、Mitsubishi（34 筆）——這 5 家目前都**沒有**私有 PID profile，只提供故障碼說明（跟 BMW 一樣，靠 `detectedBrand` 而非 `selectedBrand` 生效）。`VehicleBrandDetector` 支援的 13 個廠牌裡，Audi、Hyundai、Peugeot、Citroën 這個資料庫沒有涵蓋，維持原狀。
 
 `DtcDescriptions.SUPPORTED_BRANDS` 新增為公開常數（`load()` 預設清單的單一來源），並在 App 右上角「⋮」選單加了「支援廠牌」項目，列出目前有即時參數（PID）跟有故障碼說明的廠牌清單，供使用者查閱。
+
+### 2026-09-07（第十一輪：使用者詢問「通用型 OBD PID 是否都已建入」，回頭比對官方 SAE J1979-DA 全文）
+
+用第七輪已下載的 SAE J1979-DA（2011）標準全文比對，Mode 01 總共定義 123 個 PID，`universal-obd2.json` 當時只有 30 個——差距主要是重型柴油/混合動力/電動車/行車紀錄器等冷門區間，不需要全部補齊。挑出常見、任何乘用車都可能支援、且是單一數值（非狀態列舉）的 9 個補上：`$43` 絕對負載、`$44` 指令當量比、`$45` 相對節氣門位置、`$52` 乙醇燃料百分比、`$59` 燃油軌絕對壓力、`$5A` 相對加速踏板位置、`$61`/`$62`/`$63` 引擎扭矩（駕駛需求/實際/參考值），公式都對照規格書重新推導。
+
+`$03`（燃油系統狀態）、`$51`（燃料種類）是狀態列舉值（如「開環/閉環」「汽油/柴油/電動」），`$64`（引擎扭矩曲線圖）是含 5 個轉速/扭矩對應點的完整曲線圖——三者都不是公式引擎能處理的單一數值，先跳過，等未來需要列舉值/多點資料顯示時再評估。
+
+### 2026-09-07（第十二輪：使用者提問「Mode 01 PID 是否等同 Mode 22 DID，是否該避免重複查詢」——排查廠牌 profile 有無跟通用 PID 重複）
+
+使用者的觀察是對的：Mode 01 PID 跟 UDS Mode 22 DID 功能上都是「用識別碼讀取當前數值」，但兩者是各自獨立的定址空間，不能互通；不過如果某數值已經有標準 Mode 01 PID，就不該再為同一件事另外查該廠牌的 Mode 22 DID（多一次請求、可能還要多切一次 ECU header）。
+
+逐一比對現有廠牌 profile 的欄位跟 `universal-obd2.json`：`ford.json`（里程、胎壓警示、四輪胎壓）、`mazda.json`（四輪胎壓）都沒有重複，這些本來就是標準 PID 沒有涵蓋的資料。`citroen.json` 抓到 4 筆真的重複：`psaRpm`（`22D400`）重複 `rpm`（`010C`）、`outsideTempC`（`22D912`）重複 `ambientAirTempC`（`0146`）、`engineOilTempPSA_C`（`22DB83`）重複 `engineOilTempC`（`015C`）、`fuelLevelPercentPSA`（`22D8C4`）重複 `fuelLevelPercent`（`012F`）——這 4 筆已經從 `citroen.json` 移除。`mapPressureBar`（`22D4D9`）雖然跟 `intakeManifoldPressureKPA`（`010B`）概念相近，但渦輪引擎的 MAP 感測點位置可能跟標準感測器不同，證據不足以判定重複，保留。
