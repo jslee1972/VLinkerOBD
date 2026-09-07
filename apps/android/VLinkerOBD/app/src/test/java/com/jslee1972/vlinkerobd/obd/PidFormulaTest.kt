@@ -69,6 +69,52 @@ class PidFormulaTest {
     }
 
     @Test
+    fun evaluatesAbsoluteLoadFormula() {
+        assertEquals(50.0, PidFormula.evaluate("((A*256)+B)*100/255", listOf(0, 127))!!, 0.5)
+    }
+
+    @Test
+    fun evaluatesCommandedEquivalenceRatioFormula() {
+        // ((A*256)+B)*0.0000305; raw=32768 -> ~1.0 lambda
+        assertEquals(1.0, PidFormula.evaluate("((A*256)+B)*0.0000305", listOf(128, 0))!!, 0.001)
+    }
+
+    @Test
+    fun evaluatesRelativeThrottleFormula() {
+        assertEquals(50.0, PidFormula.evaluate("A*100/255", listOf(127))!!, 0.5)
+    }
+
+    @Test
+    fun evaluatesEthanolFuelPercentFormula() {
+        assertEquals(85.0, PidFormula.evaluate("A*100/255", listOf(217))!!, 0.5)
+    }
+
+    @Test
+    fun evaluatesFuelRailPressureAbsoluteFormula() {
+        assertEquals(2560.0, PidFormula.evaluate("((A*256)+B)*10", listOf(1, 0)))
+    }
+
+    @Test
+    fun evaluatesRelativeAcceleratorPedalFormula() {
+        assertEquals(50.0, PidFormula.evaluate("A*100/255", listOf(127))!!, 0.5)
+    }
+
+    @Test
+    fun evaluatesDriverDemandTorqueFormula() {
+        assertEquals(0.0, PidFormula.evaluate("A-125", listOf(125)))
+    }
+
+    @Test
+    fun evaluatesActualEngineTorqueFormula() {
+        assertEquals(25.0, PidFormula.evaluate("A-125", listOf(150)))
+    }
+
+    @Test
+    fun evaluatesEngineReferenceTorqueFormula() {
+        assertEquals(500.0, PidFormula.evaluate("(A*256)+B", listOf(1, 244)))
+    }
+
+    @Test
     fun evaluatesPsaTurboTempFormula() {
         // (((A*256)+B)*0.0234375)-273.15; raw=25600 -> 600.0K -> 326.85C
         assertEquals(326.85, PidFormula.evaluate("(((A*256)+B)*0.0234375)-273.15", listOf(100, 0))!!, 0.001)

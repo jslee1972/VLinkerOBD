@@ -38,6 +38,15 @@
     {"request": "0178", "field": "exhaustGasTempBank1Sensor1C", "unit": "degC", "formula": "(((B*256)+C)*0.1)-40"},
     {"request": "0178", "field": "exhaustGasTempBank1Sensor2C", "unit": "degC", "formula": "(((D*256)+E)*0.1)-40"},
     {"request": "0178", "field": "exhaustGasTempBank1Sensor3C", "unit": "degC", "formula": "(((F*256)+G)*0.1)-40"},
-    {"request": "0183", "field": "noxBank1Sensor1PPM", "unit": "ppm", "formula": "(B*256)+C"}
+    {"request": "0183", "field": "noxBank1Sensor1PPM", "unit": "ppm", "formula": "(B*256)+C"},
+    {"request": "0143", "field": "absoluteLoadPercent", "unit": "%", "formula": "((A*256)+B)*100/255"},
+    {"request": "0144", "field": "commandedEquivalenceRatio", "unit": "ratio", "formula": "((A*256)+B)*0.0000305"},
+    {"request": "0145", "field": "relativeThrottlePercent", "unit": "%", "formula": "A*100/255"},
+    {"request": "0152", "field": "ethanolFuelPercent", "unit": "%", "formula": "A*100/255"},
+    {"request": "0159", "field": "fuelRailPressureAbsoluteKPA", "unit": "kPa", "formula": "((A*256)+B)*10"},
+    {"request": "015A", "field": "relativeAcceleratorPedalPercent", "unit": "%", "formula": "A*100/255"},
+    {"request": "0161", "field": "driverDemandTorquePercent", "unit": "%", "formula": "A-125"},
+    {"request": "0162", "field": "actualEngineTorquePercent", "unit": "%", "formula": "A-125"},
+    {"request": "0163", "field": "engineReferenceTorqueNM", "unit": "Nm", "formula": "(A*256)+B"}
   ]
 }
