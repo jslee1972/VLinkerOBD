@@ -20,4 +20,6 @@ data class DashboardUiState(
     /** null = 尚未查詢過；空清單 = 已查詢且目前無故障碼。*/
     val troubleCodes: List<String>? = null,
     val isReadingTroubleCodes: Boolean = false,
+    val detectedVin: String? = null,
+    val detectedBrand: String? = null,
 )

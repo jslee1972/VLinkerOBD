@@ -82,6 +82,18 @@ object ObdResponseParser {
     }
 
     /**
+     * Parses a Mode 09 PID 02 (VIN) response. The payload after the "49 02" echo starts with a
+     * one-byte data-item count (not part of the VIN) followed by the 17-character VIN as ASCII
+     * bytes; filtering to printable ASCII (0x20–0x7E) drops that count byte and any padding
+     * without needing to special-case its position.
+     */
+    fun parseVin(raw: String): String? {
+        val payload = payloadBytes(raw, "0902") ?: return null
+        val vin = payload.filter { it in 0x20..0x7E }.map { it.toChar() }.joinToString("")
+        return vin.ifBlank { null }
+    }
+
+    /**
      * Locates the "<mode+0x40> <pid>" echo marker anywhere in the decoded byte stream (tolerating
      * command echo, split lines, and compact/unspaced responses) and returns the bytes after it.
      */

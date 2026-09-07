@@ -61,6 +61,13 @@ fun DashboardScreen(
                     state.errorMessage?.let {
                         Text(text = it, color = MaterialTheme.colorScheme.error)
                     }
+                    state.detectedBrand?.let { brand ->
+                        Text(
+                            text = "偵測到車款：$brand（VIN ${state.detectedVin}）",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.testTag("detected_brand"),
+                        )
+                    }
                 }
             }
 

@@ -86,6 +86,18 @@ class DashboardViewModelTest {
         dispatcher.scheduler.runCurrent()
     }
 
+    /**
+     * Drives past ready -> 7 init commands -> the VIN auto-detection request (answered with
+     * NO DATA, as most test doubles don't care about it) so the caller lands right at the point
+     * where the fast poll's first rpm command is in flight.
+     */
+    private suspend fun FakeBleObdClient.completeInitAndSkipVin() {
+        setReady()
+        dispatcher.scheduler.runCurrent()
+        repeat(7) { respondToNextWrite(">") }
+        respondToNextWrite("NO DATA\r>")
+    }
+
     @Test
     fun initializationSendsSevenCommandsInStrictOrderBeforePolling() = runTest(dispatcher) {
         val client = FakeBleObdClient()
@@ -104,13 +116,48 @@ class DashboardViewModelTest {
     }
 
     @Test
-    fun updatesSpeedFromPollResponse() = runTest(dispatcher) {
+    fun detectsBrandFromVinAndAutoSelectsMatchingProfile() = runTest(dispatcher) {
+        val client = FakeBleObdClient()
+        val hondaProfile = VehicleProfile(profileId = "honda", brand = "Honda")
+        val viewModel = DashboardViewModel(
+            client,
+            universalProfile,
+            mapOf("Honda" to hondaProfile),
+            externalScope = backgroundScope,
+        )
+
+        client.setReady()
+        runCurrent()
+        repeat(7) { client.respondToNextWrite(">") } // cascades into the "0902" VIN request
+
+        assertEquals("0902\r", client.writes.last())
+        client.respondToNextWrite("49 02 01 31 48 47 43 4D 38 32 36 33 33 41 31 32 33 34 35 36\r>")
+
+        assertEquals("1HGCM82633A123456", viewModel.uiState.value.detectedVin)
+        assertEquals("Honda", viewModel.uiState.value.detectedBrand)
+        assertEquals("Honda", viewModel.uiState.value.selectedBrand)
+    }
+
+    @Test
+    fun unrecognizedVinLeavesBrandSelectionUnchanged() = runTest(dispatcher) {
         val client = FakeBleObdClient()
         val viewModel = DashboardViewModel(client, universalProfile, externalScope = backgroundScope)
 
         client.setReady()
         runCurrent()
-        repeat(7) { client.respondToNextWrite(">") } // init sequence; last one cascades into the rpm poll
+        repeat(7) { client.respondToNextWrite(">") }
+        client.respondToNextWrite("NO DATA\r>") // vehicle doesn't support Mode 09
+
+        assertEquals(null, viewModel.uiState.value.detectedBrand)
+        assertEquals(UNIVERSAL_BRAND, viewModel.uiState.value.selectedBrand)
+    }
+
+    @Test
+    fun updatesSpeedFromPollResponse() = runTest(dispatcher) {
+        val client = FakeBleObdClient()
+        val viewModel = DashboardViewModel(client, universalProfile, externalScope = backgroundScope)
+
+        client.completeInitAndSkipVin() // leaves an in-flight rpm poll
 
         client.respondToNextWrite("41 0C 00 00\r>") // rpm poll -> 0, cascades into the speed poll
         client.respondToNextWrite("41 0D 28\r>") // speed poll -> 40 km/h
@@ -142,9 +189,7 @@ class DashboardViewModelTest {
         val client = FakeBleObdClient()
         val viewModel = DashboardViewModel(client, universalProfile, externalScope = backgroundScope)
 
-        client.setReady()
-        runCurrent()
-        repeat(7) { client.respondToNextWrite(">") } // last one cascades into an in-flight rpm poll
+        client.completeInitAndSkipVin() // leaves an in-flight rpm poll
 
         viewModel.sendManualCommand(" ati ")
         runCurrent() // pauses the fast loop; ATI is queued behind the in-flight rpm poll
@@ -177,9 +222,7 @@ class DashboardViewModelTest {
         val client = FakeBleObdClient()
         val viewModel = DashboardViewModel(client, universalProfile, externalScope = backgroundScope)
 
-        client.setReady()
-        runCurrent()
-        repeat(7) { client.respondToNextWrite(">") } // init; leaves an in-flight rpm poll
+        client.completeInitAndSkipVin() // leaves an in-flight rpm poll
 
         viewModel.readTroubleCodes()
         runCurrent() // pauses the fast loop; "03" is queued behind the in-flight rpm poll
@@ -197,9 +240,7 @@ class DashboardViewModelTest {
         val client = FakeBleObdClient()
         val viewModel = DashboardViewModel(client, universalProfile, externalScope = backgroundScope)
 
-        client.setReady()
-        runCurrent()
-        repeat(7) { client.respondToNextWrite(">") }
+        client.completeInitAndSkipVin()
 
         viewModel.readTroubleCodes()
         runCurrent()

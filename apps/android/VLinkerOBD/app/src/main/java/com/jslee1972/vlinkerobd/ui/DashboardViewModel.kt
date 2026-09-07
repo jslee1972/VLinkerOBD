@@ -13,6 +13,7 @@ import com.jslee1972.vlinkerobd.obd.DtcParser
 import com.jslee1972.vlinkerobd.obd.ObdResponseParser
 import com.jslee1972.vlinkerobd.obd.ObdResponseStatus
 import com.jslee1972.vlinkerobd.obd.PidDefinition
+import com.jslee1972.vlinkerobd.obd.VehicleBrandDetector
 import com.jslee1972.vlinkerobd.obd.VehicleProfile
 import com.jslee1972.vlinkerobd.model.VehicleData
 import kotlin.math.roundToInt
@@ -170,8 +171,34 @@ class DashboardViewModel(
                 }
             }
             appendLog("初始化完成，開始輪詢")
+            detectVehicleBrand()
             startPolling()
             restartBrandPolling()
+        }
+    }
+
+    /** Reads the VIN (Mode 09 PID 02) once per connection and auto-selects a matching brand profile. */
+    private suspend fun detectVehicleBrand() {
+        val result = queue.execute(ObdCommand("0902", ObdCommandKind.OBD))
+        val raw = (result as? ObdCommandResult.Success)?.raw
+        if (raw == null) {
+            appendLog("車款辨識：讀取 VIN 逾時")
+            return
+        }
+        val vin = ObdResponseParser.parseVin(raw)
+        if (vin.isNullOrBlank()) {
+            appendLog("車款辨識：無法讀取 VIN（此車可能不支援 Mode 09）")
+            return
+        }
+        val brand = VehicleBrandDetector.detectBrand(vin)
+        _uiState.update { it.copy(detectedVin = vin, detectedBrand = brand) }
+        if (brand == null) {
+            appendLog("車款辨識：VIN=$vin，無法辨識廠牌")
+            return
+        }
+        appendLog("車款辨識：VIN=$vin，廠牌=$brand")
+        if (brandProfiles.containsKey(brand)) {
+            selectBrand(brand)
         }
     }
 

@@ -103,4 +103,21 @@ class ObdResponseParserTest {
         )
         assertEquals(36.44, result!!, 0.01)
     }
+
+    @Test
+    fun parsesVinFromMode09Response() {
+        // "1HGCM82633A123456" as ASCII hex, with the leading 0x01 data-item count byte
+        val raw = "49 02 01 31 48 47 43 4D 38 32 36 33 33 41 31 32 33 34 35 36\r>"
+        assertEquals("1HGCM82633A123456", ObdResponseParser.parseVin(raw))
+    }
+
+    @Test
+    fun parseVinReturnsNullOnNoData() {
+        assertNull(ObdResponseParser.parseVin("NO DATA\r>"))
+    }
+
+    @Test
+    fun parseVinReturnsNullOnNegativeResponse() {
+        assertNull(ObdResponseParser.parseVin("7F 09 11\r>"))
+    }
 }

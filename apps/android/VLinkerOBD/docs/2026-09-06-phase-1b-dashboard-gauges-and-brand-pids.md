@@ -24,6 +24,12 @@
 
 尚未實作：Mode 04 清除故障碼（原設計文件即提醒清碼會同時熄滅故障燈、重置學習值，屬於需要另外確認的破壞性操作，之後有需要再加）、Mode 07／0A 的 UI 入口（`DtcParser` 已支援，只是 ViewModel 目前只呼叫 03）。
 
+## 自動辨識車款（Mode 09 VIN）
+
+初始化完成後、開始輪詢前，`DashboardViewModel` 會送一次 `0902`（Mode 09 PID 02＝VIN）。`ObdResponseParser.parseVin()` 解析出 17 碼 VIN 後，`VehicleBrandDetector` 依 VIN 前 3 碼（WMI，World Manufacturer Identifier，ISO 3780）比對廠牌；若偵測到的廠牌剛好有對應的私有 PID profile（目前是 Mazda／Ford／Honda），自動呼叫 `selectBrand()` 切換，使用者仍可事後用下拉選單手動覆蓋。查不到 VIN（車輛不支援 Mode 09）或 WMI 不在表內都不會中斷流程，只記 log 並維持通用 profile。
+
+`VehicleBrandDetector` 的 WMI 對照表是常見真實碼的整理，不是完整清單（大廠依廠區/年份/車型會有數十組 WMI），僅供自動預選與畫面標示參考。
+
 ## Gauge
 
 `ui/gauge/Gauge.kt` 用 Compose Canvas 自繪指針錶（不依賴外部 gauge 套件），角度換算抽成純函式 `GaugeMath.valueToAngleDegrees` 方便單元測試。車速錶 0–220 km/h，轉速錶 0–8000 rpm、6500 以上紅線。
