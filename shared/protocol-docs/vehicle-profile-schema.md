@@ -110,3 +110,9 @@ ABRP（A Better Route Planner）官方維護、Apache-2.0，真實存在且格�
 2. **初始化序列衝突，是比 Mazda/Ford/Honda 更大的架構改動**：HKMC 資料的 `init_commands` 用 `ATH1`（header 開啟）+ `ATSP6`（強制協定），跟本專案目前全域固定的 `ATH0`（header 關閉）+ `ATSP0`（自動偵測）相反。現有的 `ecuHeader`/`ecuReceiveFilter` 機制只處理「查詢私有 PID 前後臨時切換」，前提是全域 header/protocol 設定不變；要支援 HKMC 需要讓「選擇廠牌」能觸發重新初始化、套用該廠牌自己的一套全域 AT 設定，這是新的架構能力，不是現有 `restartBrandPolling()` 的擴充範圍。理論上 `ObdResponseParser` 的 marker 搜尋不要求從資料開頭比對，`ATH1` 多出來的 header 前綴應該不影響現有標準 PID 解析，但**沒有實體車或模擬器驗證過**。
 
 若之後要做 Hyundai/Kia EV 支援，這則記錄可以直接當清單用：先解決「per-brand 全域 AT 設定」架構、需要時再擴充 `bitField` 支援多位元布林運算、`is_charging` 這類欄位可以先跳過。
+
+### 2026-09-07（第四輪：[prototux/PSA-RE](https://github.com/prototux/PSA-RE)）
+
+真實存在、活躍維護（Apache-2.0、100 星、近期更新），逆向 PSA（Peugeot/Citroën/DS）AEE2001/2004/2010 車身電子架構。抽查 `buses/AEE2004.full/HS.IS/412.yml`：`periodicity: 50`、`senders`/`receivers` 欄位，內容是車門/手煞車/機油溫度等訊號——確認是**被動監聽 VAN/CAN 車身舒適網路週期性廣播封包**，跟 OVMS/opendbc/i-miev-obd2 同一類，不是 OBD-II request/response。專案自己的 README 也明白列出「Document the diagnostics (KWP/UDS) part」仍是待辦（作者亦已聲明不再積極維護），代表連原作者都還沒逆向出診斷層。暫不建立 profile。
+
+Citroën/Peugeot 目前已連續四輪查證（`autowp/psa-can` 不存在、OVMS 被動監聽、`psa-dpf-monitor-pids` 等不存在、PSA-RE 被動監聽），皆未找到可用的 request/response 診斷層資料，建議除非有新的具體來源，否則暫時擱置這個廠牌。
