@@ -27,6 +27,10 @@ class DtcDescriptions(
     companion object {
         private const val FALLBACK_MESSAGE = "此故障碼尚無內建說明，建議查詢車廠維修手冊或委由專業技師診斷。"
 
+        /** Brands with a synced dtc-codes/<brand>.json — single source of truth for [load]'s
+         * default and for any UI that wants to show which brands have DTC descriptions. */
+        val SUPPORTED_BRANDS = listOf("Ford", "Mazda", "Honda", "BMW", "Toyota", "Mercedes-Benz", "Volkswagen", "Kia", "Mitsubishi")
+
         /** Chinese category label from the DTC's leading letter (P/C/B/U). Needs no loaded data. */
         fun categoryName(code: String): String = when (code.firstOrNull()?.uppercaseChar()) {
             'P' -> "動力系統"
@@ -37,7 +41,10 @@ class DtcDescriptions(
         }
 
         /** Loads the English generic + brand-specific DTC databases synced from shared/dtc-codes. */
-        fun load(readAsset: (String) -> String, brands: List<String> = listOf("ford", "mazda", "honda")): DtcDescriptions {
+        fun load(
+            readAsset: (String) -> String,
+            brands: List<String> = SUPPORTED_BRANDS.map { it.lowercase() },
+        ): DtcDescriptions {
             val generic = parseCodeMap(readAsset("dtc-codes/generic.json"))
             val byBrand = brands.associate { brand -> brand.uppercase() to parseCodeMap(readAsset("dtc-codes/$brand.json")) }
             return DtcDescriptions(generic, byBrand)

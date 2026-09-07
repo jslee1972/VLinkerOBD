@@ -7,7 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Loads the real generic/ford/mazda/honda.json assets (not inline test fixtures) to guard
+ * Loads the real generic/ford/mazda/honda/bmw.json assets (not inline test fixtures) to guard
  * against asset corruption and parser regressions on the actual ~770KB/9,415-entry file, and
  * checks load time stays well clear of anything that would jank MainActivity.onCreate (it loads
  * synchronously on the main thread).
@@ -34,6 +34,10 @@ class DtcDescriptionsAssetIntegrationTest {
         assertEquals(
             "OBD II Monitor Testing Not Completed（英文原文，尚無中文翻譯）",
             dtc.describe("P1000", brand = "Mazda"),
+        )
+        assertEquals(
+            "Pedal Position Sensor 1 High Input（英文原文，尚無中文翻譯）",
+            dtc.describe("P1123", brand = "BMW"),
         )
     }
 }
