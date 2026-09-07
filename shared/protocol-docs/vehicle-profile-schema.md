@@ -116,3 +116,11 @@ ABRP（A Better Route Planner）官方維護、Apache-2.0，真實存在且格�
 真實存在、活躍維護（Apache-2.0、100 星、近期更新），逆向 PSA（Peugeot/Citroën/DS）AEE2001/2004/2010 車身電子架構。抽查 `buses/AEE2004.full/HS.IS/412.yml`：`periodicity: 50`、`senders`/`receivers` 欄位，內容是車門/手煞車/機油溫度等訊號——確認是**被動監聽 VAN/CAN 車身舒適網路週期性廣播封包**，跟 OVMS/opendbc/i-miev-obd2 同一類，不是 OBD-II request/response。專案自己的 README 也明白列出「Document the diagnostics (KWP/UDS) part」仍是待辦（作者亦已聲明不再積極維護），代表連原作者都還沒逆向出診斷層。暫不建立 profile。
 
 Citroën/Peugeot 目前已連續四輪查證（`autowp/psa-can` 不存在、OVMS 被動監聽、`psa-dpf-monitor-pids` 等不存在、PSA-RE 被動監聽），皆未找到可用的 request/response 診斷層資料，建議除非有新的具體來源，否則暫時擱置這個廠牌。
+
+### 2026-09-07（第五輪：[nico1080/OBD-LCD-display-for-PSA](https://github.com/nico1080/OBD-LCD-display-for-PSA)、[flobz/psa_car_controller](https://github.com/flobz/psa_car_controller)）—— 推翻上一輪的擱置建議
+
+`flobz/psa_car_controller`：真實存在（579 星），但是 PSA 官方連網服務（`connected_car v4 API`）的第三方遠端控制工具，走網路呼叫 PSA 伺服器（車鎖、空調、電量），需要車主 PSA 帳號登入，完全不經過 OBD-II 診斷埠，跟本專案的存取方式無關，不採用。
+
+`nico1080/OBD-LCD-display-for-PSA`：真實存在（Arduino + MCP2515 CAN 模組專案，18 星）。**這次是真的可用的資料源**——原始碼 `CanRequest(TxID, RxID, DID高位, DID低位, 長度)` 送出的封包是 `03 22 <DID_hi> <DID_lo>`，正是標準 **UDS Mode 22（ReadDataByIdentifier）** 單幀請求，回應 `62 <DID回音> <資料>`，跟本專案 Ford/Honda 現有的存取方式完全相同（不是被動監聽）。已從原始碼整理出引擎（header `6A8`/`688`）、胎壓 TPMS（`6AF`/`68F`）、車身 BSI（`752`/`652`）三個 ECU 共 24 個 PID，公式都是單/雙位元組四則運算，建了 `citroen.json`（`verified: "forum-partial"`，比照 Mazda 等級——單一作者在自己的 2016 Citroën DS4，EP6FDTX 引擎＋BSI2010 車身電腦上實測，非社群多車驗證）。MainActivity 把這份 profile 同時掛在「Citroen」與「Peugeot」兩個偵測到的廠牌名稱下（PSA 集團同引擎/車身電腦世代常見共用 DID，但只有 Citroën DS4 這一台車實測過）。
+
+**教訓**：同一個廠牌不同輪查證可能得到完全相反的結論——本輪能找到可用資料，純粹是因為這個作者用的是主動 UDS request/response，而不是前四輪那些被動監聽 CAN bus 的專案。之後查其他還沒查到資料的廠牌，除了看資料存不存在，更要先確認是不是走這條「主動送指令、等回應」的路。
