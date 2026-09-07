@@ -17,32 +17,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
-import androidx.lifecycle.viewmodel.compose.viewModel
-import com.jslee1972.vlinkerobd.ble.BleObdManager
-import com.jslee1972.vlinkerobd.ble.DeviceMemory
-import com.jslee1972.vlinkerobd.ble.SharedPreferencesDeviceMemory
-import com.jslee1972.vlinkerobd.obd.DtcDescriptions
-import com.jslee1972.vlinkerobd.obd.PidGroupRepository
-import com.jslee1972.vlinkerobd.obd.VehicleProfile
 import com.jslee1972.vlinkerobd.ui.DashboardScreen
-import com.jslee1972.vlinkerobd.ui.DashboardViewModel
 import com.jslee1972.vlinkerobd.ui.theme.VLinkerObdTheme
 
 private const val PERMISSION_DENIED_MESSAGE = "需要藍牙掃描權限才能尋找裝置"
-
-class DashboardViewModelFactory(
-    private val bleClient: BleObdManager,
-    private val universalProfile: VehicleProfile,
-    private val brandProfiles: Map<String, VehicleProfile>,
-    private val deviceMemory: DeviceMemory,
-) : ViewModelProvider.Factory {
-    @Suppress("UNCHECKED_CAST")
-    override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return DashboardViewModel(bleClient, universalProfile, brandProfiles, deviceMemory) as T
-    }
-}
 
 class MainActivity : ComponentActivity() {
 
@@ -59,27 +37,15 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val repository = PidGroupRepository { path -> assets.open(path).bufferedReader().use { it.readText() } }
-        val universalProfile = repository.loadUniversal()
-        // Citroen/Peugeot share the same PSA-platform engine/BSI generation this profile was
-        // reverse-engineered from (see shared/vehicle-profiles/citroen.json notes), so both
-        // detected brand names map to the one loaded profile.
-        val psaProfile = repository.loadBrand("citroen.json")
-        val brandProfiles = mapOf(
-            "Mazda" to repository.loadBrand("mazda.json"),
-            "Ford" to repository.loadBrand("ford.json"),
-            "Honda" to repository.loadBrand("honda.json"),
-            "Citroen" to psaProfile,
-            "Peugeot" to psaProfile,
-        )
-        val bleClient = BleObdManager(applicationContext)
-        val deviceMemory = SharedPreferencesDeviceMemory(applicationContext)
-        val factory = DashboardViewModelFactory(bleClient, universalProfile, brandProfiles, deviceMemory)
-        val dtcDescriptions = DtcDescriptions.load(readAsset = { path -> assets.open(path).bufferedReader().use { it.readText() } })
+        // Shared with the Android Auto car screen (see the `car` package) via VLinkerObdApplication
+        // — there's only one BLE adapter, so both surfaces must observe the same ViewModel/connection
+        // rather than each owning their own.
+        val app = application as VLinkerObdApplication
+        val viewModel = app.dashboardViewModel
+        val dtcDescriptions = app.dtcDescriptions
 
         setContent {
             VLinkerObdTheme {
-                val viewModel: DashboardViewModel = viewModel(factory = factory)
                 val uiState by viewModel.uiState.collectAsState()
                 var permissionDenied by remember { mutableStateOf(false) }
 

@@ -10,6 +10,7 @@
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
 
     <application
+        android:name=".VLinkerObdApplication"
         android:allowBackup="true"
         android:label="行車通"
         android:supportsRtl="true"
@@ -22,6 +23,24 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Android Auto: minimal template-only car screen (see car/ package + docs on why this
+             can't mirror the phone's gauge dashboard — Car App Library restricts non-Navigation
+             apps to fixed host-rendered templates). -->
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
+        <service
+            android:name=".car.VLinkerCarAppService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="androidx.car.app.CarAppService" />
+                <category android:name="androidx.car.app.category.IOT" />
+            </intent-filter>
+            <meta-data
+                android:name="androidx.car.app.minCarApiLevel"
+                android:value="1" />
+        </service>
     </application>
 
 </manifest>
