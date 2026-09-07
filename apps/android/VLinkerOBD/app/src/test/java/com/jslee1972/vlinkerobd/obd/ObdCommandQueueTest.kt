@@ -92,4 +92,32 @@ class ObdCommandQueueTest {
         runCurrent()
         assertEquals(ObdCommandResult.Timeout, result.await())
     }
+
+    @Test
+    fun staleResponseArrivingAfterATimeoutDoesNotLeakIntoTheNextCommand() = runTest {
+        // Regression test for a real-world failure on slow (non-CAN) vehicles: a response that
+        // finally arrives just after its command already gave up used to get glued onto the next
+        // command's response, corrupting it. The queue must discard that stale tail before writing
+        // anything new (see ObdCommandQueue's drainStaleIncoming).
+        val transport = FakeObdTransport()
+        val queue = ObdCommandQueue(transport, backgroundScope)
+
+        val first = async {
+            queue.execute(ObdCommand("010D", ObdCommandKind.OBD, timeoutMs = 2000, maxAttempts = 1))
+        }
+        advanceTimeBy(2_001)
+        runCurrent()
+        assertEquals(ObdCommandResult.Timeout, first.await())
+
+        // The ECU's answer to the abandoned "010D" finally shows up late, after the timeout fired.
+        transport.emit("41 0D 28\r>")
+        runCurrent()
+
+        val second = async { queue.execute(ObdCommand("010C", ObdCommandKind.OBD)) }
+        runCurrent()
+        transport.emit("41 0C 00 00\r>")
+
+        val outcome = second.await()
+        assertEquals(ObdCommandResult.Success("41 0C 00 00\r>"), outcome)
+    }
 }
