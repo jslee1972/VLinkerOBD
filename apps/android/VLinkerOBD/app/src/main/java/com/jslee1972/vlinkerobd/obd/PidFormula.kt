@@ -4,9 +4,10 @@ package com.jslee1972.vlinkerobd.obd
  * Evaluates the simple arithmetic formulas used by vehicle profile PID definitions
  * (e.g. "A-40", "((A*256)+B)/4", "((A*1373)/1000)*0.145037738").
  *
- * Supports variables A/B/C/D bound to the response bytes that follow the PID echo,
- * decimal literals, +, -, *, /, and parentheses. Anything else (byte letters beyond D,
- * Signed()/bit-field syntax used by some EV profiles) is unsupported and returns null.
+ * Supports variables A-Z bound to the response bytes that follow the PID echo (needed for
+ * multi-sensor SAE J1979 PIDs like $78/$83, whose later sensors live past byte D), decimal
+ * literals, +, -, *, /, and parentheses. Anything else (Signed()/bit-field syntax used by some
+ * EV profiles) is unsupported and returns null.
  */
 object PidFormula {
 
@@ -42,7 +43,7 @@ object PidFormula {
                     val value = numberText.toDoubleOrNull() ?: return null
                     tokens += Token.Number(value)
                 }
-                c.uppercaseChar() in charArrayOf('A', 'B', 'C', 'D') -> {
+                c.uppercaseChar() in 'A'..'Z' -> {
                     tokens += Token.Variable(c.uppercaseChar())
                     i++
                 }

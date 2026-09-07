@@ -92,8 +92,20 @@ class PidFormulaTest {
     }
 
     @Test
-    fun returnsNullForUnsupportedVariable() {
-        assertNull(PidFormula.evaluate("E", listOf(1, 2, 3, 4, 5)))
+    fun evaluatesVariablesBeyondD() {
+        // SAE J1979 multi-sensor PIDs (e.g. $78 EGT, $83 NOx) pack later sensors past byte D.
+        assertEquals(500.0, PidFormula.evaluate("(F*256)+G", listOf(0, 0, 0, 0, 0, 1, 244)))
+    }
+
+    @Test
+    fun evaluatesExhaustGasTempSensor3Formula() {
+        // (((F*256)+G)*0.1)-40; F,G=(3,140) -> raw 908 -> 90.8-40 = 50.8C
+        assertEquals(50.8, PidFormula.evaluate("(((F*256)+G)*0.1)-40", listOf(0, 0, 0, 0, 0, 3, 140))!!, 0.001)
+    }
+
+    @Test
+    fun evaluatesNoxSensorFormula() {
+        assertEquals(500.0, PidFormula.evaluate("(B*256)+C", listOf(0, 1, 244)))
     }
 
     @Test

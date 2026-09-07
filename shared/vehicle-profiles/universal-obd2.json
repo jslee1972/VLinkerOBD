@@ -24,6 +24,20 @@
     {"request": "0108", "field": "shortTermFuelTrimBank2Percent", "unit": "%", "formula": "(A-128)*100/128"},
     {"request": "0109", "field": "longTermFuelTrimBank2Percent", "unit": "%", "formula": "(A-128)*100/128"},
     {"request": "010E", "field": "timingAdvanceDegrees", "unit": "deg", "formula": "A/2-64"},
-    {"request": "0121", "field": "distanceWithMilOnKM", "unit": "km", "formula": "(A*256)+B"}
+    {"request": "0121", "field": "distanceWithMilOnKM", "unit": "km", "formula": "(A*256)+B"},
+    {"request": "0177", "field": "chargeAirCoolerTempC", "unit": "degC", "formula": "B-40"},
+    {"request": "0124", "field": "lambdaBank1Sensor1", "unit": "ratio", "formula": "((A*256)+B)*0.0000305"},
+    {"request": "0170", "field": "boostPressureCommandedKPA", "unit": "kPa", "formula": "((B*256)+C)*0.03125"},
+    {"request": "0170", "field": "boostPressureActualKPA", "unit": "kPa", "formula": "((D*256)+E)*0.03125"},
+    {"request": "0173", "field": "exhaustPressureBank1KPA", "unit": "kPa", "formula": "((B*256)+C)*0.01"},
+    {"request": "017A", "field": "dpfInletPressureKPA", "unit": "kPa", "formula": "((D*256)+E)*0.01"},
+    {"request": "017A", "field": "dpfOutletPressureKPA", "unit": "kPa", "formula": "((F*256)+G)*0.01"},
+    {"request": "016D", "field": "fuelRailPressureCommandedKPA", "unit": "kPa", "formula": "((B*256)+C)*10"},
+    {"request": "016D", "field": "fuelRailPressureActualKPA", "unit": "kPa", "formula": "((D*256)+E)*10"},
+    {"request": "015E", "field": "engineFuelRateLPH", "unit": "L/h", "formula": "((A*256)+B)*0.05"},
+    {"request": "0178", "field": "exhaustGasTempBank1Sensor1C", "unit": "degC", "formula": "(((B*256)+C)*0.1)-40"},
+    {"request": "0178", "field": "exhaustGasTempBank1Sensor2C", "unit": "degC", "formula": "(((D*256)+E)*0.1)-40"},
+    {"request": "0178", "field": "exhaustGasTempBank1Sensor3C", "unit": "degC", "formula": "(((F*256)+G)*0.1)-40"},
+    {"request": "0183", "field": "noxBank1Sensor1PPM", "unit": "ppm", "formula": "(B*256)+C"}
   ]
 }
