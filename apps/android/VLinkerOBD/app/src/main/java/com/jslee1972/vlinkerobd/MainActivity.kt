@@ -21,6 +21,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.jslee1972.vlinkerobd.ble.BleObdManager
+import com.jslee1972.vlinkerobd.obd.DtcDescriptions
 import com.jslee1972.vlinkerobd.obd.PidGroupRepository
 import com.jslee1972.vlinkerobd.obd.VehicleProfile
 import com.jslee1972.vlinkerobd.ui.DashboardScreen
@@ -63,6 +64,7 @@ class MainActivity : ComponentActivity() {
         )
         val bleClient = BleObdManager(applicationContext)
         val factory = DashboardViewModelFactory(bleClient, universalProfile, brandProfiles)
+        val dtcDescriptions = DtcDescriptions.load(readAsset = { path -> assets.open(path).bufferedReader().use { it.readText() } })
 
         setContent {
             MaterialTheme {
@@ -104,6 +106,7 @@ class MainActivity : ComponentActivity() {
                     onSendManualCommand = viewModel::sendManualCommand,
                     onClearLogs = viewModel::clearLogs,
                     onReadTroubleCodes = viewModel::readTroubleCodes,
+                    dtcDescriptions = dtcDescriptions,
                     modifier = Modifier.fillMaxSize(),
                 )
             }

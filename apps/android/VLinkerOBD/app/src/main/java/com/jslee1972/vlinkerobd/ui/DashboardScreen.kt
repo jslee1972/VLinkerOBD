@@ -47,6 +47,7 @@ fun DashboardScreen(
     onSendManualCommand: (String) -> Unit,
     onClearLogs: () -> Unit,
     onReadTroubleCodes: () -> Unit,
+    dtcDescriptions: DtcDescriptions,
     modifier: Modifier = Modifier,
 ) {
     var showTroubleCodeDetail by remember { mutableStateOf(false) }
@@ -192,13 +193,20 @@ fun DashboardScreen(
     if (showTroubleCodeDetail) {
         TroubleCodeDetailDialog(
             codes = state.troubleCodes.orEmpty(),
+            brand = state.selectedBrand.takeIf { it != UNIVERSAL_BRAND },
+            dtcDescriptions = dtcDescriptions,
             onDismiss = { showTroubleCodeDetail = false },
         )
     }
 }
 
 @Composable
-private fun TroubleCodeDetailDialog(codes: List<String>, onDismiss: () -> Unit) {
+private fun TroubleCodeDetailDialog(
+    codes: List<String>,
+    brand: String?,
+    dtcDescriptions: DtcDescriptions,
+    onDismiss: () -> Unit,
+) {
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = { TextButton(onClick = onDismiss) { Text("關閉") } },
@@ -220,7 +228,7 @@ private fun TroubleCodeDetailDialog(codes: List<String>, onDismiss: () -> Unit) 
                             style = MaterialTheme.typography.titleSmall,
                         )
                         Text(
-                            text = DtcDescriptions.describe(code),
+                            text = dtcDescriptions.describe(code, brand),
                             style = MaterialTheme.typography.bodyMedium,
                         )
                     }

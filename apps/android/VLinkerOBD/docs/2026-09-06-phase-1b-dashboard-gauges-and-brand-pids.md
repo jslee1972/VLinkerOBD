@@ -30,7 +30,12 @@
 
 - 有故障碼時顯示可點擊的警示卡片（`⚠ 偵測到 N 個故障碼，點擊查看詳情`），點擊後彈出 `TroubleCodeDetailDialog`，列出每個代碼的分類（動力系統／底盤／車身／網路通訊，來自代碼字首）與中文說明。
 - 無故障碼時顯示安靜的「無故障碼」文字，不彈窗。
-- 說明文字來自 `DtcDescriptions`：只收錄 SAE J2012 **通用**代碼（代碼第二碼是 `0`，任何車廠意義相同）的常見項目，是精選子集而非完整資料庫；查不到的代碼會誠實顯示「尚無內建說明」，不會編造。
+- 說明文字來自 `DtcDescriptions`，分層查詢（見 `shared/dtc-codes/README.md`）：
+  1. 內建約 60 個常見通用碼的繁體中文翻譯（已與下面的英文資料庫抽查比對一致）。
+  2. 查不到中文時，若目前選擇的廠牌（Mazda/Ford/Honda）有對應私有碼，顯示該廠牌的英文說明，標註「英文原文，尚無中文翻譯」。
+  3. 再查不到，退回 SAE J2012 通用碼英文資料庫（9,415 筆），同樣標註英文原文。
+  4. 都查不到才顯示「尚無內建說明」，不會編造翻譯或說明。
+  英文資料取自 [Wal33D/dtc-database](https://github.com/Wal33D/dtc-database)（MIT License），同步到 `apps/android/VLinkerOBD/app/src/main/assets/dtc-codes/`；`MainActivity.onCreate` 同步載入，實測 ~50ms，不會卡住主執行緒。
 
 ## 自動辨識車款（Mode 09 VIN）
 
