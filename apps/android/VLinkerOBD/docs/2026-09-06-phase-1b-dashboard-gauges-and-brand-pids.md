@@ -24,6 +24,14 @@
 
 尚未實作：Mode 04 清除故障碼（原設計文件即提醒清碼會同時熄滅故障燈、重置學習值，屬於需要另外確認的破壞性操作，之後有需要再加）、Mode 07／0A 的 UI 入口（`DtcParser` 已支援，只是 ViewModel 目前只呼叫 03）。
 
+### 連線後自動讀取故障碼與詳情彈窗
+
+`DashboardViewModel.startInitialization()` 在偵測完車款（見下方 VIN 小節）之後，會自動呼叫 `performTroubleCodeRead()`（`readTroubleCodes()` 與自動流程共用同一段邏輯），不用使用者手動按「讀取故障碼」。畫面上：
+
+- 有故障碼時顯示可點擊的警示卡片（`⚠ 偵測到 N 個故障碼，點擊查看詳情`），點擊後彈出 `TroubleCodeDetailDialog`，列出每個代碼的分類（動力系統／底盤／車身／網路通訊，來自代碼字首）與中文說明。
+- 無故障碼時顯示安靜的「無故障碼」文字，不彈窗。
+- 說明文字來自 `DtcDescriptions`：只收錄 SAE J2012 **通用**代碼（代碼第二碼是 `0`，任何車廠意義相同）的常見項目，是精選子集而非完整資料庫；查不到的代碼會誠實顯示「尚無內建說明」，不會編造。
+
 ## 自動辨識車款（Mode 09 VIN）
 
 初始化完成後、開始輪詢前，`DashboardViewModel` 會送一次 `0902`（Mode 09 PID 02＝VIN）。`ObdResponseParser.parseVin()` 解析出 17 碼 VIN 後，`VehicleBrandDetector` 依 VIN 前 3 碼（WMI，World Manufacturer Identifier，ISO 3780）比對廠牌；若偵測到的廠牌剛好有對應的私有 PID profile（目前是 Mazda／Ford／Honda），自動呼叫 `selectBrand()` 切換，使用者仍可事後用下拉選單手動覆蓋。查不到 VIN（車輛不支援 Mode 09）或 WMI 不在表內都不會中斷流程，只記 log 並維持通用 profile。

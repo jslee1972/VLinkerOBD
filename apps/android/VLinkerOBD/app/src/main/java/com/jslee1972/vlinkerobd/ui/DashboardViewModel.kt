@@ -105,26 +105,28 @@ class DashboardViewModel(
 
     /** Reads current (Mode 03) DTCs. Pauses the fast loop like a manual command so it doesn't race the poll. */
     fun readTroubleCodes() {
-        scope.launch {
-            fastLoopPaused = true
-            _uiState.update { it.copy(isReadingTroubleCodes = true) }
-            val result = queue.execute(ObdCommand("03", ObdCommandKind.OBD))
-            val raw = (result as? ObdCommandResult.Success)?.raw
-            if (raw == null) {
-                appendLog("讀取故障碼逾時")
+        scope.launch { performTroubleCodeRead() }
+    }
+
+    private suspend fun performTroubleCodeRead() {
+        fastLoopPaused = true
+        _uiState.update { it.copy(isReadingTroubleCodes = true) }
+        val result = queue.execute(ObdCommand("03", ObdCommandKind.OBD))
+        val raw = (result as? ObdCommandResult.Success)?.raw
+        if (raw == null) {
+            appendLog("讀取故障碼逾時")
+        } else {
+            _uiState.update { it.copy(rawResponse = raw) }
+            val codes = DtcParser.parse(raw, "03")
+            if (codes != null) {
+                _uiState.update { it.copy(troubleCodes = codes) }
+                appendLog(if (codes.isEmpty()) "讀取故障碼：無故障碼" else "讀取故障碼：${codes.joinToString(", ")}")
             } else {
-                _uiState.update { it.copy(rawResponse = raw) }
-                val codes = DtcParser.parse(raw, "03")
-                if (codes != null) {
-                    _uiState.update { it.copy(troubleCodes = codes) }
-                    appendLog(if (codes.isEmpty()) "讀取故障碼：無故障碼" else "讀取故障碼：${codes.joinToString(", ")}")
-                } else {
-                    appendLog("讀取故障碼失敗")
-                }
+                appendLog("讀取故障碼失敗")
             }
-            _uiState.update { it.copy(isReadingTroubleCodes = false) }
-            fastLoopPaused = false
         }
+        _uiState.update { it.copy(isReadingTroubleCodes = false) }
+        fastLoopPaused = false
     }
 
     override fun onCleared() {
@@ -172,6 +174,7 @@ class DashboardViewModel(
             }
             appendLog("初始化完成，開始輪詢")
             detectVehicleBrand()
+            performTroubleCodeRead()
             startPolling()
             restartBrandPolling()
         }

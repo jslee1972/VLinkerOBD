@@ -89,13 +89,15 @@ class DashboardViewModelTest {
     /**
      * Drives past ready -> 7 init commands -> the VIN auto-detection request (answered with
      * NO DATA, as most test doubles don't care about it) so the caller lands right at the point
-     * where the fast poll's first rpm command is in flight.
+     * where the fast poll's first rpm command is in flight. The automatic post-init DTC read is
+     * also answered with "no codes" so it doesn't interfere with unrelated assertions.
      */
     private suspend fun FakeBleObdClient.completeInitAndSkipVin() {
         setReady()
         dispatcher.scheduler.runCurrent()
         repeat(7) { respondToNextWrite(">") }
-        respondToNextWrite("NO DATA\r>")
+        respondToNextWrite("NO DATA\r>") // VIN request
+        respondToNextWrite("43 00\r>") // automatic DTC read
     }
 
     @Test
@@ -150,6 +152,22 @@ class DashboardViewModelTest {
 
         assertEquals(null, viewModel.uiState.value.detectedBrand)
         assertEquals(UNIVERSAL_BRAND, viewModel.uiState.value.selectedBrand)
+    }
+
+    @Test
+    fun automaticallyReadsTroubleCodesRightAfterVinDetection() = runTest(dispatcher) {
+        val client = FakeBleObdClient()
+        val viewModel = DashboardViewModel(client, universalProfile, externalScope = backgroundScope)
+
+        client.setReady()
+        runCurrent()
+        repeat(7) { client.respondToNextWrite(">") }
+        client.respondToNextWrite("NO DATA\r>") // VIN request answered; cascades into the DTC read
+
+        assertEquals("03\r", client.writes.last())
+        client.respondToNextWrite("43 01 33\r>")
+
+        assertEquals(listOf("P0133"), viewModel.uiState.value.troubleCodes)
     }
 
     @Test

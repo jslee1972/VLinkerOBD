@@ -5,12 +5,17 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
@@ -28,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.jslee1972.vlinkerobd.ble.ScannedBleDevice
+import com.jslee1972.vlinkerobd.obd.DtcDescriptions
 import com.jslee1972.vlinkerobd.ui.gauge.Gauge
 
 @Composable
@@ -43,6 +49,8 @@ fun DashboardScreen(
     onReadTroubleCodes: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var showTroubleCodeDetail by remember { mutableStateOf(false) }
+
     Scaffold(modifier = modifier) { padding ->
         LazyColumn(
             modifier = Modifier
@@ -116,18 +124,27 @@ fun DashboardScreen(
 
             state.troubleCodes?.let { codes ->
                 item {
-                    Card(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
-                        Column(modifier = Modifier.padding(8.dp).testTag("trouble_codes")) {
-                            Text("故障碼", style = MaterialTheme.typography.titleSmall)
-                            if (codes.isEmpty()) {
-                                Text("無故障碼")
-                            } else {
-                                codes.forEach { code -> Text(code) }
-                            }
+                    if (codes.isEmpty()) {
+                        Text("無故障碼", modifier = Modifier.testTag("trouble_codes"))
+                    } else {
+                        Card(
+                            onClick = { showTroubleCodeDetail = true },
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(8.dp)
+                                .testTag("trouble_codes"),
+                        ) {
+                            Text(
+                                text = "⚠ 偵測到 ${codes.size} 個故障碼，點擊查看詳情",
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                modifier = Modifier.padding(12.dp),
+                            )
                         }
                     }
                 }
             }
+
 
             if (state.devices.isNotEmpty()) {
                 items(state.devices) { device ->
@@ -171,6 +188,46 @@ fun DashboardScreen(
             }
         }
     }
+
+    if (showTroubleCodeDetail) {
+        TroubleCodeDetailDialog(
+            codes = state.troubleCodes.orEmpty(),
+            onDismiss = { showTroubleCodeDetail = false },
+        )
+    }
+}
+
+@Composable
+private fun TroubleCodeDetailDialog(codes: List<String>, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { TextButton(onClick = onDismiss) { Text("關閉") } },
+        title = { Text("故障詳情") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 400.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                codes.forEach { code ->
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                        modifier = Modifier.testTag("dtc_detail_$code"),
+                    ) {
+                        Text(
+                            text = "$code（${DtcDescriptions.categoryName(code)}）",
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                        Text(
+                            text = DtcDescriptions.describe(code),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                }
+            }
+        },
+    )
 }
 
 @Composable
