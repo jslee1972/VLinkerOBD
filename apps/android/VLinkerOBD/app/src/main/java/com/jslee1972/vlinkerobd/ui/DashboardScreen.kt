@@ -66,6 +66,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.jslee1972.vlinkerobd.ble.ScannedBleDevice
 import com.jslee1972.vlinkerobd.obd.DtcDescriptions
 import com.jslee1972.vlinkerobd.ui.gauge.Gauge
+import com.jslee1972.vlinkerobd.ui.gauge.TrendChart
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -85,6 +86,7 @@ fun DashboardScreen(
     var showTroubleCodeDetail by remember { mutableStateOf(false) }
     var showOverflowMenu by remember { mutableStateOf(false) }
     var showDiagnostics by remember { mutableStateOf(false) }
+    var showSupportedBrands by remember { mutableStateOf(false) }
 
     Scaffold(
         modifier = modifier,
@@ -114,6 +116,14 @@ fun DashboardScreen(
                                 showDiagnostics = true
                             },
                             modifier = Modifier.testTag("menu_diagnostics"),
+                        )
+                        DropdownMenuItem(
+                            text = { Text("支援廠牌") },
+                            onClick = {
+                                showOverflowMenu = false
+                                showSupportedBrands = true
+                            },
+                            modifier = Modifier.testTag("menu_supported_brands"),
                         )
                     }
                 },
@@ -157,6 +167,37 @@ fun DashboardScreen(
                             redlineStart = 6500f,
                             modifier = Modifier.weight(1f),
                         )
+                    }
+                }
+            }
+
+            if (state.speedHistory.size >= 2 || state.rpmHistory.size >= 2) {
+                item {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = RoundedCornerShape(20.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(14.dp),
+                            modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        ) {
+                            SectionLabel("趨勢圖")
+                            TrendChart(
+                                values = state.speedHistory,
+                                label = "車速",
+                                unit = "km/h",
+                                lineColor = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            TrendChart(
+                                values = state.rpmHistory,
+                                label = "轉速",
+                                unit = "rpm",
+                                lineColor = MaterialTheme.colorScheme.secondary,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
                     }
                 }
             }
@@ -244,7 +285,10 @@ fun DashboardScreen(
     if (showTroubleCodeDetail) {
         TroubleCodeDetailDialog(
             codes = state.troubleCodes.orEmpty(),
-            brand = state.selectedBrand.takeIf { it != UNIVERSAL_BRAND },
+            // DTC descriptions only need a detected brand, not a brand with a live PID profile
+            // (e.g. BMW has DTC descriptions but no PID profile yet) — prefer the user's manual
+            // brand override (selectedBrand) but fall back to VIN auto-detection.
+            brand = state.selectedBrand.takeIf { it != UNIVERSAL_BRAND } ?: state.detectedBrand,
             dtcDescriptions = dtcDescriptions,
             onDismiss = { showTroubleCodeDetail = false },
         )
@@ -256,6 +300,13 @@ fun DashboardScreen(
             onSendManualCommand = onSendManualCommand,
             onClearLogs = onClearLogs,
             onDismiss = { showDiagnostics = false },
+        )
+    }
+
+    if (showSupportedBrands) {
+        SupportedBrandsDialog(
+            pidBrands = state.availableBrands.filter { it != UNIVERSAL_BRAND },
+            onDismiss = { showSupportedBrands = false },
         )
     }
 }
@@ -448,6 +499,45 @@ private fun TroubleCodeDetailDialog(
                         )
                     }
                 }
+            }
+        },
+    )
+}
+
+@Composable
+private fun SupportedBrandsDialog(pidBrands: List<String>, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { TextButton(onClick = onDismiss) { Text("關閉") } },
+        title = { Text("支援廠牌") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 400.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("即時參數（PID）", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
+                    Text(
+                        text = pidBrands.joinToString("、").ifBlank { "（尚無）" },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("故障碼說明", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
+                    Text(
+                        text = DtcDescriptions.SUPPORTED_BRANDS.joinToString("、"),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Text(
+                    text = "車款依 VIN 自動判斷；即時參數需要有對應廠牌的 PID 資料才會顯示，故障碼說明則只要偵測到廠牌即可，兩者不一定同步。",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         },
     )
