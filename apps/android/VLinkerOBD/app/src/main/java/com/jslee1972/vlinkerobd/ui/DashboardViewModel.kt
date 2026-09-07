@@ -307,7 +307,7 @@ class DashboardViewModel(
     }
 
     companion object {
-        private val INIT_SEQUENCE = listOf("ATZ", "ATE0", "ATL0", "ATS0", "ATH0", "ATSP0", "0100")
+        private val INIT_SEQUENCE = listOf("ATZ", "ATE0", "ATL0", "ATS0", "ATH0", "ATSP0", "ATCFC1", "0100")
         private const val POLL_INTERVAL_MS = 200L
         private const val BRAND_POLL_INTERVAL_MS = 3000L
         private const val STALE_THRESHOLD = 5

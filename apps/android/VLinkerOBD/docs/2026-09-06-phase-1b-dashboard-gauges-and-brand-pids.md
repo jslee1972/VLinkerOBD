@@ -6,6 +6,10 @@
 
 原設計每 200 ms 輪詢一次 `010D`。現在改為每一輪依序輪詢 `010C`（轉速）與 `010D`（車速）兩個命令，兩者皆完成後才 `delay(200ms)` 進入下一輪（見 `DashboardViewModel.startPolling`）。command queue 仍然保持「同時只有一個命令在途」的限制不變。
 
+## 初始化序列新增 `ATCFC1`
+
+原七步初始化（`ATZ`/`ATE0`/`ATL0`/`ATS0`/`ATH0`/`ATSP0`/`0100`）在 `ATSP0` 之後、`0100` 之前插入 `ATCFC1`（開啟自動流控制），變成八步。真品 ELM327/STN 晶片的自動流控制預設就是開啟的，這行是「明確重申預設值」以防遇到把預設值改掉的仿冒晶片；`ObdCommandQueue` 對 AT 指令一律只看有沒有收到 `>`，不檢查實際回應內容，所以即使某些協定下 `ATCFC1` 被晶片忽略或回錯誤，也不會擋住後續初始化。
+
 ## NO DATA / 7F 狀態機
 
 `ObdResponseParser.classify()` 回傳 `ObdResponseStatus`：`Data`、`NoData`、`NegativeResponse(service, nrc, messageZh)`、`Unrecognized`。`DashboardViewModel.pollOnce()` 遇到 `NoData`/`NegativeResponse` 不會清空目前讀數，只寫 log；車速/轉速個別累計「連續失敗次數」，達到 5 次才把畫面歸零顯示 `--`（見 `STALE_THRESHOLD`）。

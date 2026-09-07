@@ -87,7 +87,7 @@ class DashboardViewModelTest {
     }
 
     /**
-     * Drives past ready -> 7 init commands -> the VIN auto-detection request (answered with
+     * Drives past ready -> 8 init commands -> the VIN auto-detection request (answered with
      * NO DATA, as most test doubles don't care about it) so the caller lands right at the point
      * where the fast poll's first rpm command is in flight. The automatic post-init DTC read is
      * also answered with "no codes" so it doesn't interfere with unrelated assertions.
@@ -95,26 +95,26 @@ class DashboardViewModelTest {
     private suspend fun FakeBleObdClient.completeInitAndSkipVin() {
         setReady()
         dispatcher.scheduler.runCurrent()
-        repeat(7) { respondToNextWrite(">") }
+        repeat(8) { respondToNextWrite(">") }
         respondToNextWrite("NO DATA\r>") // VIN request
         respondToNextWrite("43 00\r>") // automatic DTC read
     }
 
     @Test
-    fun initializationSendsSevenCommandsInStrictOrderBeforePolling() = runTest(dispatcher) {
+    fun initializationSendsCommandsInStrictOrderBeforePolling() = runTest(dispatcher) {
         val client = FakeBleObdClient()
         DashboardViewModel(client, universalProfile, externalScope = backgroundScope)
 
         client.setReady()
         runCurrent()
 
-        val expectedInit = listOf("ATZ", "ATE0", "ATL0", "ATS0", "ATH0", "ATSP0", "0100")
+        val expectedInit = listOf("ATZ", "ATE0", "ATL0", "ATS0", "ATH0", "ATSP0", "ATCFC1", "0100")
         for (command in expectedInit) {
             client.respondToNextWrite(">")
         }
 
-        // exactly the seven init commands were sent, in order, before any PID poll
-        assertEquals(expectedInit.map { "$it\r" }, client.writes.take(7))
+        // exactly the init commands were sent, in order, before any PID poll
+        assertEquals(expectedInit.map { "$it\r" }, client.writes.take(expectedInit.size))
     }
 
     @Test
@@ -130,7 +130,7 @@ class DashboardViewModelTest {
 
         client.setReady()
         runCurrent()
-        repeat(7) { client.respondToNextWrite(">") } // cascades into the "0902" VIN request
+        repeat(8) { client.respondToNextWrite(">") } // cascades into the "0902" VIN request
 
         assertEquals("0902\r", client.writes.last())
         client.respondToNextWrite("49 02 01 31 48 47 43 4D 38 32 36 33 33 41 31 32 33 34 35 36\r>")
@@ -147,7 +147,7 @@ class DashboardViewModelTest {
 
         client.setReady()
         runCurrent()
-        repeat(7) { client.respondToNextWrite(">") }
+        repeat(8) { client.respondToNextWrite(">") }
         client.respondToNextWrite("NO DATA\r>") // vehicle doesn't support Mode 09
 
         assertEquals(null, viewModel.uiState.value.detectedBrand)
@@ -161,7 +161,7 @@ class DashboardViewModelTest {
 
         client.setReady()
         runCurrent()
-        repeat(7) { client.respondToNextWrite(">") }
+        repeat(8) { client.respondToNextWrite(">") }
         client.respondToNextWrite("NO DATA\r>") // VIN request answered; cascades into the DTC read
 
         assertEquals("03\r", client.writes.last())
