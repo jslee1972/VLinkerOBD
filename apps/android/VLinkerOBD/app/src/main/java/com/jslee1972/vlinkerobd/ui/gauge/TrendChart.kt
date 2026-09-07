@@ -33,24 +33,27 @@ fun TrendChart(
     unit: String,
     lineColor: Color,
     modifier: Modifier = Modifier,
+    compact: Boolean = false,
 ) {
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            val latest = values.lastOrNull()
-            if (latest != null) {
+        if (!compact) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
-                    text = "${latest.roundToInt()} $unit",
-                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                    color = lineColor,
+                    text = label,
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                val latest = values.lastOrNull()
+                if (latest != null) {
+                    Text(
+                        text = "${latest.roundToInt()} $unit",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                        color = lineColor,
+                    )
+                }
             }
         }
-        Canvas(modifier = Modifier.fillMaxWidth().height(64.dp)) {
+        Canvas(modifier = Modifier.fillMaxWidth().height(if (compact) 22.dp else 64.dp)) {
             if (values.size < 2) return@Canvas
 
             val min = values.min()

@@ -7,6 +7,7 @@ const val UNIVERSAL_BRAND = "通用"
 
 data class DashboardUiState(
     val connectionLabel: String = "尚未連線",
+    val connectedDeviceName: String? = null,
     val devices: List<ScannedBleDevice> = emptyList(),
     val vehicleData: VehicleData = VehicleData(),
     val rawResponse: String = "",

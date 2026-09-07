@@ -75,7 +75,7 @@ class DashboardViewModel(
     private var rpmStaleCount = 0
 
     private var autoConnectAttempted = false
-    private var connectingAddress: String? = null
+    private var connectingDevice: ScannedBleDevice? = null
 
     init {
         scope.launch { bleClient.logs.collect { appendLog(it) } }
@@ -92,7 +92,7 @@ class DashboardViewModel(
     fun stopScan() = bleClient.stopScan()
 
     fun connect(device: ScannedBleDevice) {
-        connectingAddress = device.address
+        connectingDevice = device
         bleClient.connect(device)
     }
 
@@ -187,10 +187,16 @@ class DashboardViewModel(
         }
         when (state) {
             ConnectionState.READY -> {
-                connectingAddress?.let { deviceMemory.rememberDevice(it) }
+                connectingDevice?.let { device ->
+                    deviceMemory.rememberDevice(device.address)
+                    _uiState.update { it.copy(connectedDeviceName = device.name ?: device.address) }
+                }
                 startInitialization()
             }
-            ConnectionState.DISCONNECTED, ConnectionState.DISCONNECTED_AFTER_ERROR, ConnectionState.ERROR -> stopPolling()
+            ConnectionState.DISCONNECTED, ConnectionState.DISCONNECTED_AFTER_ERROR, ConnectionState.ERROR -> {
+                stopPolling()
+                _uiState.update { it.copy(connectedDeviceName = null) }
+            }
             else -> Unit
         }
     }
