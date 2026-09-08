@@ -22,6 +22,14 @@ class VehicleBrandDetectorTest {
     }
 
     @Test
+    fun detectsCitroenFromSpainPlantWmi() {
+        // VR7 = Citroën built at PSA's Vigo, Spain plant (confirmed against idlesign/vininfo and
+        // way-platform/vin-go's Stellantis WMI tables) — this exact VIN came back from a real
+        // Citroën Berlingo test drive where it had been going undetected as "VR7" was missing.
+        assertEquals("Citroen", VehicleBrandDetector.detectBrand("VR7ECYHZRNJ613202"))
+    }
+
+    @Test
     fun returnsNullForUnknownWmi() {
         assertNull(VehicleBrandDetector.detectBrand("ZZZ00000000000000"))
     }

@@ -23,7 +23,7 @@ object VehicleBrandDetector {
         putAllFor("Kia", "KNA", "KND", "KNM", "5XY", "5XX")
         putAllFor("Mitsubishi", "JA3", "JA4", "4A3", "4A4", "6MM")
         putAllFor("Peugeot", "VF3", "VR3")
-        putAllFor("Citroen", "VF7", "VS7")
+        putAllFor("Citroen", "VF7", "VS7", "VR7")
     }
 
     /** Returns the detected brand name, or null if [vin] is too short or its WMI is unrecognized. */
