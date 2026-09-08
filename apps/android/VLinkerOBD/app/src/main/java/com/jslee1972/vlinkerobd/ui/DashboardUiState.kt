@@ -39,4 +39,6 @@ data class DashboardUiState(
     val detectedBrand: String? = null,
     val ecuTestResults: List<EcuTestResult> = emptyList(),
     val isTestingEcu: Boolean = false,
+    /** Phone GPS-derived speed (km/h), shown alongside the OBD-reported speed for comparison. */
+    val gpsSpeedKph: Float? = null,
 )

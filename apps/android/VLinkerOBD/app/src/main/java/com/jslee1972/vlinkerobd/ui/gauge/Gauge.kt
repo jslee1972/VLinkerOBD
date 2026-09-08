@@ -45,6 +45,9 @@ fun Gauge(
     modifier: Modifier = Modifier,
     redlineStart: Float? = null,
     trendContent: (@Composable () -> Unit)? = null,
+    /** Small secondary reading shown under the main digital value, for comparing against an
+     * independent source (e.g. phone GPS speed vs. the vehicle's own OBD-reported speed). */
+    secondaryValueText: String? = null,
 ) {
     val animatedValue by animateFloatAsState(targetValue = value, label = "gauge-$label")
     val trackColor = MaterialTheme.colorScheme.surfaceVariant
@@ -139,6 +142,13 @@ fun Gauge(
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                secondaryValueText?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                        color = MaterialTheme.colorScheme.secondary,
+                    )
+                }
             }
         }
 

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 4,
   "profileId": "universal-obd2",
   "displayName": "Universal OBD-II",
   "displayNameZh": "通用 OBD-II",
@@ -8,11 +8,11 @@
     {"request": "010C", "field": "rpm", "unit": "rpm", "formula": "((A*256)+B)/4"},
     {"request": "0105", "field": "coolantTempC", "unit": "degC", "formula": "A-40"},
     {"request": "0104", "field": "engineLoadPercent", "unit": "%", "formula": "A*100/255"},
-    {"request": "0111", "field": "throttlePercent", "unit": "%", "formula": "A*100/255"},
+    {"request": "0111", "field": "throttlePercent", "unit": "%", "formula": "A*100/255", "fastPoll": true},
     {"request": "0142", "field": "controlModuleVoltage", "unit": "V", "formula": "((A*256)+B)/1000"},
     {"request": "010F", "field": "intakeAirTempC", "unit": "degC", "formula": "A-40"},
     {"request": "0110", "field": "mafGramsPerSec", "unit": "g/s", "formula": "((A*256)+B)/100"},
-    {"request": "010B", "field": "intakeManifoldPressureKPA", "unit": "kPa", "formula": "A"},
+    {"request": "010B", "field": "intakeManifoldPressureKPA", "unit": "kPa", "formula": "A", "fastPoll": true},
     {"request": "010A", "field": "fuelPressureKPA", "unit": "kPa", "formula": "A*3"},
     {"request": "0133", "field": "barometricPressureKPA", "unit": "kPa", "formula": "A"},
     {"request": "012F", "field": "fuelLevelPercent", "unit": "%", "formula": "A*100/255"},
@@ -41,12 +41,12 @@
     {"request": "0183", "field": "noxBank1Sensor1PPM", "unit": "ppm", "formula": "(B*256)+C"},
     {"request": "0143", "field": "absoluteLoadPercent", "unit": "%", "formula": "((A*256)+B)*100/255"},
     {"request": "0144", "field": "commandedEquivalenceRatio", "unit": "ratio", "formula": "((A*256)+B)*0.0000305"},
-    {"request": "0145", "field": "relativeThrottlePercent", "unit": "%", "formula": "A*100/255"},
+    {"request": "0145", "field": "relativeThrottlePercent", "unit": "%", "formula": "A*100/255", "fastPoll": true},
     {"request": "0152", "field": "ethanolFuelPercent", "unit": "%", "formula": "A*100/255"},
     {"request": "0159", "field": "fuelRailPressureAbsoluteKPA", "unit": "kPa", "formula": "((A*256)+B)*10"},
-    {"request": "015A", "field": "relativeAcceleratorPedalPercent", "unit": "%", "formula": "A*100/255"},
-    {"request": "0161", "field": "driverDemandTorquePercent", "unit": "%", "formula": "A-125"},
-    {"request": "0162", "field": "actualEngineTorquePercent", "unit": "%", "formula": "A-125"},
+    {"request": "015A", "field": "relativeAcceleratorPedalPercent", "unit": "%", "formula": "A*100/255", "fastPoll": true},
+    {"request": "0161", "field": "driverDemandTorquePercent", "unit": "%", "formula": "A-125", "fastPoll": true},
+    {"request": "0162", "field": "actualEngineTorquePercent", "unit": "%", "formula": "A-125", "fastPoll": true},
     {"request": "0163", "field": "engineReferenceTorqueNM", "unit": "Nm", "formula": "(A*256)+B"}
   ]
 }

@@ -9,6 +9,10 @@ data class PidDefinition(
     val ecuHeader: String? = null,
     val ecuReceiveFilter: String? = null,
     val verified: String? = null,
+    // True for brand PIDs that change quickly enough (e.g. gear position) to need their own
+    // short-interval ticker instead of sharing the slow round-robin with the rest of the
+    // profile's PIDs — see DashboardViewModel.restartBrandPolling().
+    val fastPoll: Boolean = false,
 )
 
 data class PidModel(
@@ -73,6 +77,7 @@ class PidGroupRepository(private val readAsset: (String) -> String) {
                 ecuHeader = (obj["ecuHeader"] as? JsonValue.JsonString)?.value,
                 ecuReceiveFilter = (obj["ecuReceiveFilter"] as? JsonValue.JsonString)?.value,
                 verified = (obj["verified"] as? JsonValue.JsonString)?.value,
+                fastPoll = (obj["fastPoll"] as? JsonValue.JsonBoolean)?.value ?: false,
             )
         }
 

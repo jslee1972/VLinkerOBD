@@ -1,9 +1,9 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "profileId": "citroen-ds4-ep6fdtx-bsi2010",
   "brand": "Citroen",
   "displayNameZh": "Citroën/Peugeot (PSA) 私有 PID",
-  "notes": "取自 nico1080/OBD-LCD-display-for-PSA（單一作者實測，非社群多車驗證），在 2016 Citroën DS4（EP6FDTX 引擎、BSI2010 車身電腦）上確認可用。PSA 集團（Peugeot/Citroën/DS/Opel/Vauxhall）常見共用引擎與車身電腦世代，同款引擎/BSI 的其他廠徽車型很可能適用相同 DID，但未逐一實測。標記 verified: forum-partial，跟 Mazda 同等級。原始來源另外還有 rpm（22D400）、outside temp（22D912）、engine oil temp（22DB83）、fuel level（22D8C4）四個 DID，但這些數值標準 Mode 01 PID（010C/0146/015C/012F）已經涵蓋，故未收錄，避免重複查詢與不必要的 ECU header 切換。",
+  "notes": "取自 nico1080/OBD-LCD-display-for-PSA（單一作者實測，非社群多車驗證），在 2016 Citroën DS4（EP6FDTX 引擎、BSI2010 車身電腦）上確認可用。PSA 集團（Peugeot/Citroën/DS/Opel/Vauxhall）常見共用引擎與車身電腦世代，同款引擎/BSI 的其他廠徽車型很可能適用相同 DID，但未逐一實測。標記 verified: forum-partial，跟 Mazda 同等級。原始來源另外還有 rpm（22D400）、outside temp（22D912）、engine oil temp（22DB83）、fuel level（22D8C4）四個 DID，但這些數值標準 Mode 01 PID（010C/0146/015C/012F）已經涵蓋，故未收錄，避免重複查詢與不必要的 ECU header 切換。`gearRaw`：原始碼（OBD-LCD.ino）直接把這個位元組當手排檔位數字顯示（`if (gear >= 1 && gear <= 6) print(gear)`），沒有另外的 P/R/N/D 對照表，也沒有中性檔/倒車檔的特別處理——目前公式維持原樣（單純回傳原始位元組），只是把顯示單位從 `raw` 改成『檔』；範圍外的數值（0、7 以上）目前仍會照樣顯示數字，沒有可信來源可以確認代表什麼。標記 `fastPoll: true`，因為檔位會隨駕駛排檔即時變動，不該跟這份 profile 裡其他變化很慢的 PID（胎壓、渦輪設定值等）共用同一個慢速輪詢週期。",
   "pids": [
     {"request": "22D47E", "field": "turboPressureBar", "unit": "bar", "ecuHeader": "6A8", "ecuReceiveFilter": "688", "formula": "((A*256)+B)/12500", "verified": "forum-partial"},
     {"request": "22D48D", "field": "turboPressureSetpointBar", "unit": "bar", "ecuHeader": "6A8", "ecuReceiveFilter": "688", "formula": "((A*256)+B)/12500", "verified": "forum-partial"},
@@ -12,7 +12,7 @@
     {"request": "22D411", "field": "mapTempC", "unit": "degC", "ecuHeader": "6A8", "ecuReceiveFilter": "688", "formula": "A*0.75-48", "verified": "forum-partial"},
     {"request": "22D429", "field": "oilPressureBar", "unit": "bar", "ecuHeader": "6A8", "ecuReceiveFilter": "688", "formula": "(((A*256)+B)*0.00076294)-0.25", "verified": "forum-partial"},
     {"request": "22D728", "field": "engineTorqueNm", "unit": "Nm", "ecuHeader": "6A8", "ecuReceiveFilter": "688", "formula": "((A*256)+B)/16", "verified": "forum-partial"},
-    {"request": "22D409", "field": "gearRaw", "unit": "raw", "ecuHeader": "6A8", "ecuReceiveFilter": "688", "formula": "A", "verified": "forum-partial"},
+    {"request": "22D409", "field": "gearRaw", "unit": "檔", "ecuHeader": "6A8", "ecuReceiveFilter": "688", "formula": "A", "verified": "forum-partial", "fastPoll": true},
 
     {"request": "22D610", "field": "tireFrontLeftPressureBar", "unit": "bar", "ecuHeader": "6AF", "ecuReceiveFilter": "68F", "formula": "((A*256)+B)/1000", "verified": "forum-partial"},
     {"request": "22D60F", "field": "tireFrontRightPressureBar", "unit": "bar", "ecuHeader": "6AF", "ecuReceiveFilter": "68F", "formula": "((A*256)+B)/1000", "verified": "forum-partial"},

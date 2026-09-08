@@ -4,6 +4,7 @@ import com.jslee1972.vlinkerobd.ble.BleObdClient
 import com.jslee1972.vlinkerobd.ble.ConnectionState
 import com.jslee1972.vlinkerobd.ble.DeviceMemory
 import com.jslee1972.vlinkerobd.ble.ScannedBleDevice
+import com.jslee1972.vlinkerobd.gps.GpsSpeedSource
 import com.jslee1972.vlinkerobd.obd.PidDefinition
 import com.jslee1972.vlinkerobd.obd.VehicleProfile
 import kotlinx.coroutines.Dispatchers
@@ -71,6 +72,26 @@ private class FakeDeviceMemory(private var address: String? = null) : DeviceMemo
     override fun rememberDevice(address: String) {
         rememberedAddresses += address
         this.address = address
+    }
+}
+
+private class FakeGpsSpeedSource : GpsSpeedSource {
+    private val _speedKph = MutableStateFlow<Float?>(null)
+    override val speedKph: StateFlow<Float?> = _speedKph
+    var started = false
+        private set
+
+    override fun start() {
+        started = true
+    }
+
+    override fun stop() {
+        started = false
+        _speedKph.value = null
+    }
+
+    fun emit(speed: Float?) {
+        _speedKph.value = speed
     }
 }
 
@@ -189,6 +210,24 @@ class DashboardViewModelTest {
     }
 
     @Test
+    fun exposesGpsSpeedAlongsideObdSpeed() = runTest(dispatcher) {
+        val client = FakeBleObdClient()
+        val fakeGps = FakeGpsSpeedSource()
+        val viewModel = DashboardViewModel(client, universalProfile, externalScope = backgroundScope, gpsSpeedSource = fakeGps)
+        runCurrent()
+
+        assertEquals(null, viewModel.uiState.value.gpsSpeedKph)
+        fakeGps.emit(62.3f)
+        runCurrent()
+        assertEquals(62.3f, viewModel.uiState.value.gpsSpeedKph)
+
+        viewModel.startGpsTracking()
+        assertTrue(fakeGps.started)
+        viewModel.stopGpsTracking()
+        assertEquals(false, fakeGps.started)
+    }
+
+    @Test
     fun updatesSpeedFromPollResponse() = runTest(dispatcher) {
         val client = FakeBleObdClient()
         val viewModel = DashboardViewModel(client, universalProfile, externalScope = backgroundScope)
@@ -203,6 +242,46 @@ class DashboardViewModelTest {
         assertEquals("41 0D 28\r>", viewModel.uiState.value.rawResponse)
         assertEquals(listOf(0f), viewModel.uiState.value.rpmHistory)
         assertEquals(listOf(40f), viewModel.uiState.value.speedHistory)
+    }
+
+    @Test
+    fun estimatesInstantFuelConsumptionFromMafAndSpeed() = runTest(dispatcher) {
+        val client = FakeBleObdClient()
+        val profileWithMaf = universalProfile.copy(
+            pids = universalProfile.pids +
+                PidDefinition(request = "0110", field = "mafGramsPerSec", unit = "g/s", formula = "((A*256)+B)/100"),
+        )
+        val viewModel = DashboardViewModel(client, profileWithMaf, externalScope = backgroundScope)
+
+        client.completeInitAndSkipVin() // leaves an in-flight rpm poll
+
+        client.respondToNextWrite("41 0C 00 00\r>") // rpm -> 0, cascades into the speed poll
+        client.respondToNextWrite("41 0D 3C\r>") // speed -> 60 km/h, cascades into the MAF poll
+        assertEquals("0110\r", client.writes.last())
+
+        // MAF = 0x2710/100 = 100.0 g/s. fuelLPerHour = 100*3600/(14.7*750) = 32.653...
+        // instant L/100km = fuelLPerHour / speedKph * 100 = 32.653/60*100 = 54.4
+        client.respondToNextWrite("41 10 27 10\r>")
+        assertEquals("54.4 升/百公里", viewModel.uiState.value.standardReadings["instantFuelConsumption"])
+    }
+
+    @Test
+    fun showsInstantFuelConsumptionInLitersPerHourWhileStationary() = runTest(dispatcher) {
+        val client = FakeBleObdClient()
+        val profileWithMaf = universalProfile.copy(
+            pids = universalProfile.pids +
+                PidDefinition(request = "0110", field = "mafGramsPerSec", unit = "g/s", formula = "((A*256)+B)/100"),
+        )
+        val viewModel = DashboardViewModel(client, profileWithMaf, externalScope = backgroundScope)
+
+        client.completeInitAndSkipVin() // leaves an in-flight rpm poll
+
+        client.respondToNextWrite("41 0C 03 E8\r>") // rpm -> 250 (idling)
+        client.respondToNextWrite("41 0D 00\r>") // speed -> 0 km/h, cascades into the MAF poll
+        // L/100km is meaningless at a standstill (division by ~0) — show L/h instead, matching
+        // how idle-specific gauges on reference dashboards label this same quantity.
+        client.respondToNextWrite("41 10 27 10\r>") // MAF -> 100.0 g/s -> 32.65 L/h
+        assertEquals("32.65 升/小時", viewModel.uiState.value.standardReadings["instantFuelConsumption"])
     }
 
     @Test
@@ -436,6 +515,63 @@ class DashboardViewModelTest {
         runCurrent()
 
         assertEquals(coolantWritesSoFar, client.writes.count { it == "0105\r" })
+    }
+
+    @Test
+    fun fastPollBrandPidIsPolledMuchSoonerThanTheNormalBrandTicker() = runTest(dispatcher) {
+        val client = FakeBleObdClient()
+        val citroenProfile = VehicleProfile(
+            profileId = "citroen",
+            brand = "Citroen",
+            pids = listOf(
+                PidDefinition(request = "22D409", field = "gearRaw", unit = "檔", formula = "A", fastPoll = true),
+            ),
+        )
+        val viewModel = DashboardViewModel(
+            client,
+            universalProfile,
+            mapOf("Citroen" to citroenProfile),
+            externalScope = backgroundScope,
+        )
+
+        client.setReady()
+        runCurrent()
+        repeat(8) { client.respondToNextWrite(">") } // cascades into the "0902" VIN request
+        client.respondToNextWrite("49 02 01 56 46 37 41 42 43 44 45 46 47 48 31 32 33 34 35 36\r>") // VIN VF7...
+        assertEquals("Citroen", viewModel.uiState.value.detectedBrand)
+        client.respondToNextWrite("43 00\r>") // automatic DTC read, no codes
+
+        // Drives the queue generically (see stopsPollingStandardExtraPidPermanentlyAfterRepeated-
+        // Failures above for why) until the gear PID has been queried twice.
+        var lastAnswered = ""
+        var gearQueries = 0
+        var guard = 0
+        while (gearQueries < 2) {
+            check(++guard < 5_000) { "drive loop did not converge" }
+            runCurrent()
+            val pending = client.writes.lastOrNull() ?: ""
+            if (pending == lastAnswered) {
+                dispatcher.scheduler.advanceTimeBy(20)
+                continue
+            }
+            lastAnswered = pending
+            when (pending) {
+                "22D409\r" -> {
+                    gearQueries++
+                    client.respond("62 D4 09 03\r>")
+                }
+                "010C\r" -> client.respond("41 0C 00 00\r>")
+                "010D\r" -> client.respond("41 0D 00\r>")
+            }
+            runCurrent()
+        }
+
+        assertEquals("3.0 檔", viewModel.uiState.value.extraReadings["gearRaw"])
+        // Two gear queries completing within 3s (BRAND_POLL_INTERVAL_MS, the normal brand-PID
+        // ticker's cadence) proves fastPoll actually got its own shorter-interval ticker rather
+        // than sharing the slow round-robin — on the old shared ticker this alone would take at
+        // least one full BRAND_POLL_INTERVAL_MS.
+        assertTrue(dispatcher.scheduler.currentTime < 3_000)
     }
 
     @Test

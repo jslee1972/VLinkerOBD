@@ -5,7 +5,10 @@
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
+    <!-- Not capped to maxSdkVersion 30 like the BLE-scan-adjacent grant used to be: GPS speed
+         comparison (see gps/AndroidGpsSpeedSource) needs real location access on every Android
+         version, not just as a side effect of pre-12 BLE scanning. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
 
@@ -17,9 +20,16 @@
         android:label="行車通"
         android:supportsRtl="true"
         android:theme="@style/Theme.VLinkerOBD">
+        <!-- Locked portrait: rotating triggered an Activity recreation that re-ran the BLE
+             auto-connect LaunchedEffect while a connection was already active, corrupting
+             connection state (reported as a crash + BLE disconnect on rotation). The gauge
+             dashboard is portrait-only by design anyway (see DashboardScreen's side-by-side
+             gauge layout), so locking orientation avoids the whole class of bug rather than
+             building a real landscape layout that hasn't been asked for. -->
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:screenOrientation="portrait">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

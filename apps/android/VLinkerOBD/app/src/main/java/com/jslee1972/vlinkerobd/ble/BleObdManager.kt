@@ -67,6 +67,8 @@ class BleObdManager(private val context: Context) : BleObdClient, ObdTransport {
     // connection attempt, so it isn't cancelled and recreated on every connect() call.
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var discoveryWatchdog: Job? = null
+    private var discoveryAttempt = 0
+    private var lastConnectDevice: ScannedBleDevice? = null
 
     private fun log(message: String) {
         _logs.tryEmit(message)
@@ -126,6 +128,14 @@ class BleObdManager(private val context: Context) : BleObdClient, ObdTransport {
 
     override fun connect(device: ScannedBleDevice) {
         stopScan()
+        discoveryAttempt = 0
+        lastConnectDevice = device
+        beginGattConnection(device)
+    }
+
+    /** Does the actual connectGatt() call — shared by [connect] and the discovery watchdog's
+     * own-device retry, which must NOT reset [discoveryAttempt] the way a fresh [connect] does. */
+    private fun beginGattConnection(device: ScannedBleDevice) {
         val remote = adapter?.getRemoteDevice(device.address)
         if (remote == null) {
             log("找不到裝置 ${device.address}")
@@ -145,6 +155,7 @@ class BleObdManager(private val context: Context) : BleObdClient, ObdTransport {
     override fun disconnect() {
         discoveryWatchdog?.cancel()
         discoveryWatchdog = null
+        discoveryAttempt = 0
         try {
             gatt?.disconnect()
             gatt?.close()
@@ -160,33 +171,39 @@ class BleObdManager(private val context: Context) : BleObdClient, ObdTransport {
     }
 
     /**
-     * Android's BLE stack occasionally never calls back [BluetoothGattCallback.onServicesDiscovered]
-     * after [BluetoothGatt.discoverServices] — observed in the field specifically on a phone's
-     * first auto-reconnect to a remembered device right after the app starts (subsequent manual
-     * reconnects work fine), which otherwise leaves the connection stuck in DISCOVERING_GATT
-     * forever with no error and no way to recover short of force-quitting the app. If discovery
-     * hasn't completed within [SERVICE_DISCOVERY_TIMEOUT_MS], retry it once; if the retry also
-     * doesn't complete in time, give up and disconnect so the caller's own reconnect logic (or the
-     * user) can try again from a clean state instead of hanging silently.
+     * Android's BLE stack occasionally takes a long time — or, rarely, never — to call back
+     * [BluetoothGattCallback.onServicesDiscovered] after [BluetoothGatt.discoverServices],
+     * observed in the field specifically on a phone's first auto-reconnect to a remembered device
+     * right after the app starts. A short timeout here turned out to be actively harmful: it cut
+     * off connections that would have completed fine given a bit more time, so this waits a
+     * generous [SERVICE_DISCOVERY_TIMEOUT_MS] before doing anything. If it does time out, the
+     * retry is a full fresh GATT connection (not just re-calling discoverServices on the same,
+     * possibly wedged, gatt object) since the earlier stale-cache/race theories point at the
+     * connection itself, not just the discovery call. After [MAX_DISCOVERY_ATTEMPTS] full
+     * attempts, give up and disconnect — [onConnectionStateChanged] in DashboardViewModel resets
+     * the auto-reconnect latch and restarts scanning on that, so the app keeps trying instead of
+     * going permanently idle until a manual restart.
      */
     private fun startDiscoveryWatchdog(gattRef: BluetoothGatt) {
         discoveryWatchdog?.cancel()
         discoveryWatchdog = scope.launch {
             delay(SERVICE_DISCOVERY_TIMEOUT_MS)
             if (_connectionState.value != ConnectionState.DISCOVERING_GATT) return@launch
-            log("服務探索逾時，重試一次")
-            try {
-                gattRef.discoverServices()
-            } catch (e: SecurityException) {
-                log("探索服務權限不足：${e.message}")
-                _connectionState.value = ConnectionState.ERROR
+            discoveryAttempt++
+            val device = lastConnectDevice
+            if (discoveryAttempt >= MAX_DISCOVERY_ATTEMPTS || device == null) {
+                log("服務探索逾時（已重試 $discoveryAttempt 次），中斷連線")
+                discoveryAttempt = 0
+                disconnect()
                 return@launch
             }
-            delay(SERVICE_DISCOVERY_TIMEOUT_MS)
-            if (_connectionState.value == ConnectionState.DISCOVERING_GATT) {
-                log("服務探索重試後仍逾時，中斷連線")
-                disconnect()
+            log("服務探索逾時，重新建立連線（第 $discoveryAttempt 次重試）")
+            try {
+                gattRef.close()
+            } catch (e: SecurityException) {
+                log("關閉連線權限不足：${e.message}")
             }
+            beginGattConnection(device)
         }
     }
 
@@ -262,6 +279,7 @@ class BleObdManager(private val context: Context) : BleObdClient, ObdTransport {
         override fun onServicesDiscovered(g: BluetoothGatt, status: Int) {
             discoveryWatchdog?.cancel()
             discoveryWatchdog = null
+            discoveryAttempt = 0
             val candidates = mutableListOf<GattCharacteristicCandidate>()
             val lookup = mutableMapOf<Pair<String, String>, BluetoothGattCharacteristic>()
             for (service in g.services) {
@@ -361,6 +379,11 @@ class BleObdManager(private val context: Context) : BleObdClient, ObdTransport {
     companion object {
         private val CLIENT_CHARACTERISTIC_CONFIG_UUID: UUID =
             UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
-        private const val SERVICE_DISCOVERY_TIMEOUT_MS = 5_000L
+        // 5s turned out to be actively harmful in the field — it cut off first-launch
+        // auto-reconnects that would have completed fine given more time. 15s per attempt, up to
+        // 2 full attempts, is a more patient balance between "recover from a genuine stall" and
+        // "don't kill a connection that's just slow to start."
+        private const val SERVICE_DISCOVERY_TIMEOUT_MS = 15_000L
+        private const val MAX_DISCOVERY_ATTEMPTS = 2
     }
 }

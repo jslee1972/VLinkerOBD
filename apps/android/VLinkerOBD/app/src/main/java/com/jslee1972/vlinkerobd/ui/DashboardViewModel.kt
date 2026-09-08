@@ -7,6 +7,8 @@ import com.jslee1972.vlinkerobd.ble.ConnectionState
 import com.jslee1972.vlinkerobd.ble.DeviceMemory
 import com.jslee1972.vlinkerobd.ble.NoOpDeviceMemory
 import com.jslee1972.vlinkerobd.ble.ScannedBleDevice
+import com.jslee1972.vlinkerobd.gps.GpsSpeedSource
+import com.jslee1972.vlinkerobd.gps.NoOpGpsSpeedSource
 import com.jslee1972.vlinkerobd.obd.ObdCommand
 import com.jslee1972.vlinkerobd.obd.ObdCommandKind
 import com.jslee1972.vlinkerobd.obd.ObdCommandQueue
@@ -42,6 +44,7 @@ class DashboardViewModel(
     private val deviceMemory: DeviceMemory = NoOpDeviceMemory,
     externalScope: CoroutineScope? = null,
     private val brandDetector: VehicleBrandDetector = VehicleBrandDetector.FALLBACK,
+    private val gpsSpeedSource: GpsSpeedSource = NoOpGpsSpeedSource,
 ) : ViewModel() {
 
     // Production uses viewModelScope (survives config changes, cancelled in onCleared); tests
@@ -53,6 +56,18 @@ class DashboardViewModel(
 
     private val speedPid = universalProfile.pids.first { it.field == "speedKPH" }
     private val rpmPid = universalProfile.pids.first { it.field == "rpm" }
+
+    // Trip computer: fuel consumption/distance/time/acceleration are never reported directly by
+    // any PID — they're derived here from mafGramsPerSec + speedKPH, both already-verified
+    // standard PIDs, the same way most OBD-II trip-computer apps do it. Polled on the fast loop
+    // (not the slow standard-extra ticker) since an "instant" fuel figure needs to track speed
+    // at the same cadence, not once every few seconds.
+    private val mafPid = universalProfile.pids.firstOrNull { it.field == "mafGramsPerSec" }
+    private var mafStaleCount = 0
+    private var tripDistanceKm = 0.0
+    private var tripFuelLiters = 0.0
+    private var tripElapsedSeconds = 0.0
+    private var previousSpeedKph: Double? = null
 
     // Standard PIDs beyond speed/RPM that are always available (no brand profile needed), polled
     // on a slow ticker like brand PIDs so they don't compete with the fast speed/RPM loop.
@@ -67,7 +82,9 @@ class DashboardViewModel(
 
     private var pollingJob: Job? = null
     private var brandPollingJob: Job? = null
+    private var fastBrandPollingJob: Job? = null
     private var standardPollingJob: Job? = null
+    private var fastStandardPollingJob: Job? = null
 
     @Volatile
     private var fastLoopPaused = false
@@ -87,10 +104,15 @@ class DashboardViewModel(
             }
         }
         scope.launch { bleClient.connectionState.collect { state -> onConnectionStateChanged(state) } }
+        scope.launch { gpsSpeedSource.speedKph.collect { speed -> _uiState.update { it.copy(gpsSpeedKph = speed) } } }
     }
 
     fun startScan() = bleClient.startScan()
     fun stopScan() = bleClient.stopScan()
+
+    /** MainActivity calls this once location permission is granted; stopGpsTracking on pause/destroy. */
+    fun startGpsTracking() = gpsSpeedSource.start()
+    fun stopGpsTracking() = gpsSpeedSource.stop()
 
     fun connect(device: ScannedBleDevice) {
         connectingDevice = device
@@ -247,7 +269,18 @@ class DashboardViewModel(
                 }
                 startInitialization()
             }
-            ConnectionState.DISCONNECTED, ConnectionState.DISCONNECTED_AFTER_ERROR, ConnectionState.ERROR -> {
+            ConnectionState.DISCONNECTED_AFTER_ERROR -> {
+                stopPolling()
+                _uiState.update { it.copy(connectedDeviceName = null) }
+                // A connection that was ready/initializing and then dropped unexpectedly (e.g.
+                // the BLE service-discovery watchdog giving up after repeated timeouts) shouldn't
+                // need a manual app restart to recover — clear the one-shot auto-connect latch
+                // and rescan so the remembered device gets picked back up once it's reachable
+                // again, instead of sitting idle forever.
+                autoConnectAttempted = false
+                startScan()
+            }
+            ConnectionState.DISCONNECTED, ConnectionState.ERROR -> {
                 stopPolling()
                 _uiState.update { it.copy(connectedDeviceName = null) }
             }
@@ -303,6 +336,12 @@ class DashboardViewModel(
 
     private fun startPolling() {
         pollingJob?.cancel()
+        tripDistanceKm = 0.0
+        tripFuelLiters = 0.0
+        tripElapsedSeconds = 0.0
+        previousSpeedKph = null
+        var latestSpeedKph: Double? = null
+        var latestMafGramsPerSec: Double? = null
         pollingJob = scope.launch {
             while (isActive) {
                 if (!fastLoopPaused) {
@@ -319,19 +358,88 @@ class DashboardViewModel(
                     val speed = pollOnce(speedPid)
                     if (speed != null) {
                         speedStaleCount = 0
+                        latestSpeedKph = speed
                         updateVehicleData { it.copy(speedKph = speed.roundToInt()) }
                         _uiState.update { it.copy(speedHistory = (it.speedHistory + speed.toFloat()).takeLast(HISTORY_SIZE)) }
                     } else if (++speedStaleCount >= STALE_THRESHOLD) {
+                        latestSpeedKph = null
                         updateVehicleData { it.copy(speedKph = null) }
                     }
                 }
+                if (!fastLoopPaused && mafPid != null) {
+                    val maf = pollOnce(mafPid)
+                    if (maf != null) {
+                        mafStaleCount = 0
+                        latestMafGramsPerSec = maf
+                    } else if (++mafStaleCount >= STALE_THRESHOLD) {
+                        latestMafGramsPerSec = null
+                    }
+                }
+                // Skip integrating distance/fuel while paused (a manual command or the ECU test
+                // tool can pause this loop for several seconds) — repeatedly re-integrating a
+                // frozen last-known speed/MAF over a long pause would fabricate distance/fuel
+                // that was never actually observed. Elapsed trip time keeps counting regardless.
+                updateTripComputer(latestSpeedKph, latestMafGramsPerSec, accumulateMotion = !fastLoopPaused)
                 delay(POLL_INTERVAL_MS)
             }
         }
     }
 
+    /**
+     * Estimates fuel consumption from mass airflow using the standard MAF-based approximation
+     * most OBD-II trip-computer apps use: fuel mass rate = air mass rate / stoichiometric AFR,
+     * converted to volume by fuel density. Assumes gasoline constants (AFR 14.7:1, density
+     * 750 g/L) since the app has no reliable way to know the actual fuel type — diesel's slightly
+     * different constants (AFR ~14.5, density ~832 g/L) would shift the result a little, but not
+     * enough to change the order of magnitude. This is always an estimate, never a raw PID value.
+     */
+    private fun updateTripComputer(speedKph: Double?, mafGramsPerSec: Double?, accumulateMotion: Boolean) {
+        val tickHours = (POLL_INTERVAL_MS / 1000.0) / 3600.0
+        tripElapsedSeconds += POLL_INTERVAL_MS / 1000.0
+        _uiState.update { it.copy(standardReadings = it.standardReadings + ("tripDuration" to "%.1f 分鐘".format(tripElapsedSeconds / 60.0))) }
+        if (!accumulateMotion) return
+
+        if (speedKph != null && mafGramsPerSec != null) {
+            val fuelLitersPerHour = mafGramsPerSec * 3600.0 / (14.7 * 750.0)
+            tripDistanceKm += speedKph * tickHours
+            tripFuelLiters += fuelLitersPerHour * tickHours
+
+            val instantFormatted = if (speedKph > 1.0) {
+                "%.1f 升/百公里".format(fuelLitersPerHour / speedKph * 100.0)
+            } else {
+                "%.2f 升/小時".format(fuelLitersPerHour)
+            }
+            _uiState.update { it.copy(standardReadings = it.standardReadings + ("instantFuelConsumption" to instantFormatted)) }
+
+            if (tripDistanceKm > 0.05) {
+                val avgFormatted = "%.1f 升/百公里".format(tripFuelLiters / tripDistanceKm * 100.0)
+                _uiState.update { it.copy(standardReadings = it.standardReadings + ("averageFuelConsumption" to avgFormatted)) }
+            }
+        }
+
+        previousSpeedKph?.let { previous ->
+            if (speedKph != null) {
+                val deltaMps = (speedKph - previous) / 3.6
+                val acceleration = deltaMps / (POLL_INTERVAL_MS / 1000.0)
+                val formatted = "%.2f 米/秒²".format(acceleration)
+                _uiState.update { it.copy(standardReadings = it.standardReadings + ("acceleration" to formatted)) }
+            }
+        }
+        previousSpeedKph = speedKph
+
+        _uiState.update { it.copy(standardReadings = it.standardReadings + ("tripDistance" to "%.2f 公里".format(tripDistanceKm))) }
+    }
+
+    /**
+     * Brand PIDs aren't all equal in how often they're worth asking: things like tire pressure or
+     * a turbo's rated setpoint barely change, but gear position changes every shift — sharing one
+     * slow round-robin ticker across ~20 PIDs meant a fast-changing field like gear only got
+     * re-asked once a minute. PIDs marked [PidDefinition.fastPoll] in the profile JSON get their
+     * own short-interval ticker instead of waiting behind the rest of the list.
+     */
     private fun restartBrandPolling() {
         brandPollingJob?.cancel()
+        fastBrandPollingJob?.cancel()
         val profile = brandProfiles[_uiState.value.selectedBrand] ?: return
         val pids = profile.pids.ifEmpty {
             profile.models.flatMap { model ->
@@ -340,8 +448,17 @@ class DashboardViewModel(
         }
         if (pids.isEmpty()) return
 
+        val (fastPids, slowPids) = pids.partition { it.fastPoll }
+        val onResult = { field: String, formatted: String ->
+            _uiState.update { it.copy(extraReadings = it.extraReadings + (field to formatted)) }
+        }
+        if (slowPids.isNotEmpty()) brandPollingJob = launchPidTicker(slowPids, BRAND_POLL_INTERVAL_MS, onResult)
+        if (fastPids.isNotEmpty()) fastBrandPollingJob = launchPidTicker(fastPids, FAST_BRAND_POLL_INTERVAL_MS, onResult)
+    }
+
+    private fun launchPidTicker(pids: List<PidDefinition>, intervalMs: Long, onResult: (field: String, formatted: String) -> Unit): Job {
         val failureStreak = mutableMapOf<String, Int>()
-        brandPollingJob = scope.launch {
+        return scope.launch {
             while (isActive) {
                 for (pid in pids) {
                     // A vehicle that never answers a PID (protocol doesn't support it, wrong ECU,
@@ -352,7 +469,7 @@ class DashboardViewModel(
                     // PID in the list has given up, skipping the delay too would busy-loop this
                     // coroutine with no suspension point at all.
                     if ((failureStreak[pid.field] ?: 0) >= GIVE_UP_THRESHOLD) {
-                        delay(BRAND_POLL_INTERVAL_MS)
+                        delay(intervalMs)
                         continue
                     }
 
@@ -374,47 +491,34 @@ class DashboardViewModel(
                     if (value != null) {
                         failureStreak[pid.field] = 0
                         val formatted = "%.1f %s".format(value, pid.unit)
-                        _uiState.update { it.copy(extraReadings = it.extraReadings + (pid.field to formatted)) }
+                        onResult(pid.field, formatted)
                     } else {
                         failureStreak[pid.field] = (failureStreak[pid.field] ?: 0) + 1
                     }
-                    delay(BRAND_POLL_INTERVAL_MS)
+                    delay(intervalMs)
                 }
             }
         }
     }
 
-    /** Slow ticker for standard PIDs (battery voltage, coolant temp, timing advance) that need no ECU header. */
+    /**
+     * Ticker(s) for standard (non-brand) PIDs beyond speed/RPM/MAF — battery voltage, temperatures,
+     * pressures, fuel trims, etc. Every numeric field universal-obd2.json defines gets polled here;
+     * a vehicle that doesn't support a given one just NO-DATAs and permanently backs off (see
+     * launchPidTicker) like any other unsupported PID, so there's no harm in asking for all of
+     * them rather than guessing which ones this specific car has. Split into fast/slow the same
+     * way as restartBrandPolling().
+     */
     private fun restartStandardPolling() {
         standardPollingJob?.cancel()
+        fastStandardPollingJob?.cancel()
         if (standardExtraPids.isEmpty()) return
-        val failureStreak = mutableMapOf<String, Int>()
-        standardPollingJob = scope.launch {
-            while (isActive) {
-                for (pid in standardExtraPids) {
-                    // See restartBrandPolling(): once a PID has failed enough times in a row,
-                    // stop asking for the rest of this connection instead of retrying forever —
-                    // but still delay so an all-given-up list can't busy-loop this coroutine.
-                    if ((failureStreak[pid.field] ?: 0) >= GIVE_UP_THRESHOLD) {
-                        delay(BRAND_POLL_INTERVAL_MS)
-                        continue
-                    }
-
-                    while (fastLoopPaused) delay(POLL_INTERVAL_MS)
-                    fastLoopPaused = true
-                    val value = pollOnce(pid)
-                    fastLoopPaused = false
-                    if (value != null) {
-                        failureStreak[pid.field] = 0
-                        val formatted = "%.1f %s".format(value, pid.unit)
-                        _uiState.update { it.copy(standardReadings = it.standardReadings + (pid.field to formatted)) }
-                    } else {
-                        failureStreak[pid.field] = (failureStreak[pid.field] ?: 0) + 1
-                    }
-                    delay(BRAND_POLL_INTERVAL_MS)
-                }
-            }
+        val (fastPids, slowPids) = standardExtraPids.partition { it.fastPoll }
+        val onResult = { field: String, formatted: String ->
+            _uiState.update { it.copy(standardReadings = it.standardReadings + (field to formatted)) }
         }
+        if (slowPids.isNotEmpty()) standardPollingJob = launchPidTicker(slowPids, BRAND_POLL_INTERVAL_MS, onResult)
+        if (fastPids.isNotEmpty()) fastStandardPollingJob = launchPidTicker(fastPids, FAST_BRAND_POLL_INTERVAL_MS, onResult)
     }
 
     private suspend fun pollOnce(pid: PidDefinition): Double? {
@@ -447,8 +551,12 @@ class DashboardViewModel(
         pollingJob = null
         brandPollingJob?.cancel()
         brandPollingJob = null
+        fastBrandPollingJob?.cancel()
+        fastBrandPollingJob = null
         standardPollingJob?.cancel()
         standardPollingJob = null
+        fastStandardPollingJob?.cancel()
+        fastStandardPollingJob = null
     }
 
     private fun connectionLabelFor(state: ConnectionState): String = when (state) {
@@ -466,8 +574,27 @@ class DashboardViewModel(
         private val INIT_SEQUENCE = listOf("ATZ", "ATE0", "ATL0", "ATS0", "ATH0", "ATSP0", "ATCFC1", "0100")
         private const val POLL_INTERVAL_MS = 200L
         private const val BRAND_POLL_INTERVAL_MS = 3000L
+        private const val FAST_BRAND_POLL_INTERVAL_MS = 800L
         private const val STALE_THRESHOLD = 5
-        private val STANDARD_EXTRA_FIELDS = listOf("controlModuleVoltage", "coolantTempC", "timingAdvanceDegrees")
+        // Every universal-obd2.json field except speedKPH/rpm (dedicated fast-loop gauges) and
+        // mafGramsPerSec (polled separately, at fast-loop cadence, for the trip computer). A field
+        // this vehicle doesn't support just NO-DATAs and permanently backs off like any other
+        // unsupported PID (see launchPidTicker) — there's no need to hand-pick a subset per car.
+        private val STANDARD_EXTRA_FIELDS = listOf(
+            "coolantTempC", "engineLoadPercent", "throttlePercent", "controlModuleVoltage",
+            "intakeAirTempC", "intakeManifoldPressureKPA", "fuelPressureKPA", "barometricPressureKPA",
+            "fuelLevelPercent", "ambientAirTempC", "engineOilTempC", "runtimeSinceStartSec",
+            "shortTermFuelTrimBank1Percent", "longTermFuelTrimBank1Percent",
+            "shortTermFuelTrimBank2Percent", "longTermFuelTrimBank2Percent", "timingAdvanceDegrees",
+            "distanceWithMilOnKM", "chargeAirCoolerTempC", "lambdaBank1Sensor1",
+            "boostPressureCommandedKPA", "boostPressureActualKPA", "exhaustPressureBank1KPA",
+            "dpfInletPressureKPA", "dpfOutletPressureKPA", "fuelRailPressureCommandedKPA",
+            "fuelRailPressureActualKPA", "engineFuelRateLPH", "exhaustGasTempBank1Sensor1C",
+            "exhaustGasTempBank1Sensor2C", "exhaustGasTempBank1Sensor3C", "noxBank1Sensor1PPM",
+            "absoluteLoadPercent", "commandedEquivalenceRatio", "relativeThrottlePercent",
+            "ethanolFuelPercent", "fuelRailPressureAbsoluteKPA", "relativeAcceleratorPedalPercent",
+            "driverDemandTorquePercent", "actualEngineTorquePercent", "engineReferenceTorqueNM",
+        )
         private const val HISTORY_SIZE = 60
         // A PID this vehicle never answers after this many consecutive tries is permanently
         // skipped for the rest of the connection — a vehicle's PID support doesn't change

@@ -3,6 +3,7 @@ package com.jslee1972.vlinkerobd
 import android.app.Application
 import com.jslee1972.vlinkerobd.ble.BleObdManager
 import com.jslee1972.vlinkerobd.ble.SharedPreferencesDeviceMemory
+import com.jslee1972.vlinkerobd.gps.AndroidGpsSpeedSource
 import com.jslee1972.vlinkerobd.obd.DtcDescriptions
 import com.jslee1972.vlinkerobd.obd.PidGroupRepository
 import com.jslee1972.vlinkerobd.obd.VehicleBrandDetector
@@ -68,6 +69,7 @@ class VLinkerObdApplication : Application() {
             deviceMemory = deviceMemory,
             externalScope = appScope,
             brandDetector = brandDetector,
+            gpsSpeedSource = AndroidGpsSpeedSource(applicationContext),
         )
     }
 }

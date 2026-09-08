@@ -113,6 +113,10 @@ fun DashboardScreen(
                     )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
+                // The title is a single line now (brand + VIN merged) — the default 64dp bar
+                // height was sized for a two-line title and left a visibly oversized gap above
+                // the status row below it.
+                expandedHeight = 48.dp,
                 actions = {
                     val troubleCodeCount = state.troubleCodes?.size ?: 0
                     if (troubleCodeCount > 0) {
@@ -178,7 +182,9 @@ fun DashboardScreen(
                 .padding(padding)
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
-            contentPadding = PaddingValues(vertical = 12.dp),
+            // Less top inset than bottom — the TopAppBar above already carries its own padding,
+            // so a full 12dp on top of that left a visibly oversized gap before the status row.
+            contentPadding = PaddingValues(top = 2.dp, bottom = 12.dp),
         ) {
             item { StatusHeader(state) }
 
@@ -199,6 +205,9 @@ fun DashboardScreen(
                             label = "車速",
                             unit = "km/h",
                             modifier = Modifier.weight(1f).testTag("speed_value"),
+                            // GPS speed shown small underneath for a real-world sanity check
+                            // against the vehicle's own OBD-reported speed.
+                            secondaryValueText = state.gpsSpeedKph?.let { "GPS %.0f".format(it) },
                             trendContent = if (state.speedHistory.size >= 2) {
                                 {
                                     TrendChart(
@@ -269,21 +278,27 @@ fun DashboardScreen(
 
             // Standard PIDs and brand-specific PIDs are both "live vehicle readings" from the
             // user's point of view — auto-detected/auto-polled the moment data is available,
-            // never gated behind the brand dropdown — so they render as one merged section.
-            // Sorted by field name (rather than left at incidental map-iteration order) and keyed
-            // by field in gridItems so a card's grid position never jumps as new fields stream in.
-            val liveReadings = (state.standardReadings + state.extraReadings).toSortedMap()
+            // never gated behind the brand dropdown — so they're grouped together by subject
+            // (engine, temperature, pressure, ...) the same way speed+RPM already share one gauge
+            // card, rather than one long undifferentiated grid now that most of universal-obd2.json
+            // is polled. Each group is sorted by field name and keyed in gridItems so a card's grid
+            // position never jumps as new fields stream in.
+            val liveReadings = state.standardReadings + state.extraReadings
             if (liveReadings.isNotEmpty()) {
-                item { SectionLabel("即時參數") }
-                item {
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(2),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.heightIn(max = 600.dp),
-                    ) {
-                        gridItems(liveReadings.entries.toList(), key = { it.key }) { (field, value) ->
-                            ParameterStatCard(field, value)
+                val grouped = liveReadings.entries.groupBy { ParameterGroups.groupFor(it.key) }
+                for (group in ParameterGroups.displayOrder) {
+                    val entries = grouped[group]?.sortedBy { it.key } ?: continue
+                    item(key = "section_$group") { SectionLabel(group) }
+                    item(key = "grid_$group") {
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(2),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.heightIn(max = 600.dp),
+                        ) {
+                            gridItems(entries, key = { it.key }) { (field, value) ->
+                                ParameterStatCard(field, value)
+                            }
                         }
                     }
                 }

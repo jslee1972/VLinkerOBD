@@ -47,6 +47,10 @@
 
 Android 端由 `BitFieldExtractor`（`apps/android/VLinkerOBD/app/src/main/java/com/jslee1972/vlinkerobd/obd/BitFieldExtractor.kt`）實作上述解碼，`PidFormula` 則維持只處理 `A/B/C/D` 四則運算字串（兩者互不取代，一個 PID 定義依資料形狀選一種）。
 
+## v4 新增欄位：`fastPoll`
+
+- `fastPoll`（選填，布林值，預設 `false`）：標記這個廠牌 PID 變化速度快（例如檔位、油門開度這類會隨駕駛動作即時變動的數值），需要比同一份 profile 裡其他 PID 更頻繁查詢。同一輪詢清單裡的所有 PID 原本共用同一個輪詢間隔，PID 數量一多（例如 `citroen.json` 有近 20 個），變化快的欄位反而要等一整輪跑完才會再問一次，可能長達一分鐘。標記 `fastPoll: true` 的 PID 會另外跑一個獨立、間隔短很多的輪詢迴圈（`DashboardViewModel.FAST_BRAND_POLL_INTERVAL_MS`），不受同一份 profile 裡其他慢速 PID 拖累。
+
 ## 同廠牌多車型／多指令 header 差異
 
 同一廠牌底下不同車型、甚至同一車型不同 PID，都可能需要不同的 `ecuHeader`（例如 Mazda 胎壓 PID，Miata NC 與 RX-8/MazdaSpeed6 的 header 不同；Ford Fiesta 里程數與胎壓分別要切換到不同 ECU header）。有「多車型」差異時用 `models` 陣列分組，每個 model 有自己的 `modelId`、`displayNameZh`、`ecuHeader`（當作底下 PID 沒指定時的預設值），底下才是 `pids` 清單：
@@ -290,3 +294,51 @@ VR7 修好、廠牌成功辨識成 Citroen 後，第一次連上真的開始輪�
 **這不是 bug，是 ECU 誠實的回應**：NRC `0x31`（requestOutOfRange）是 UDS 標準定義的「服務本身合法、但這個識別碼在這台 ECU 上不存在/不支援」，跟 `NO DATA`（逾時無回應）是不同層級的失敗——能收到明確的 `7F` 拒絕，代表 header `6A8`/`688` 確實連到一顆真的會處理 Mode 22 請求的 ECU，只是這三個 DID（`22D47E`/`22D48D`/`22D47F`）在這台車的引擎 ECU 軟體版本上沒有實作。`citroen.json` 的這批 PID 原本就是從單一一台 2016 Citroën DS4（EP6FDTX 引擎）逆向出來的（見 README／JSON 內 `notes`），本來就註記「同引擎/BSI 世代的其他廠徽車型很可能適用，但未逐一實測」——現在有了這台 VR7 Berlingo 的實測反例，證實**不是所有 PSA 車輛都共用同一組渦輪感測器 DID**，符合預期的不確定性，不需要改程式碼；既有的永久放棄機制（第十八輪）已經會在連續失敗 5 次後自動停止查詢這三個欄位。
 
 同一輪也修了一個真的 bug：使用者回報「APP 第一次啟動、自動連上曾配對過的裝置後，會卡在『探索服務中』不動，要強制關閉 APP 重開才會恢復」。查 `BleObdManager.kt` 的 `onConnectionStateChange`，發現 GATT 連線成功後呼叫 `discoverServices()`，但**完全沒有處理逾時或失敗**——Android 的 BLE 堆疊已知會偶爾在呼叫 `discoverServices()` 之後永遠不觸發 `onServicesDiscovered` 回呼（尤其容易發生在 App 啟動後第一次自動重連，之後手動重新連線反而正常，這正好對上使用者描述的症狀），導致連線狀態永遠卡在 `DISCOVERING_GATT`，沒有任何錯誤訊息、也沒有重試。修法：新增一個 5 秒逾時的看門狗（`startDiscoveryWatchdog`）——逾時就重試一次 `discoverServices()`，再逾時就直接斷線讓既有的重連邏輯接手，而不是靜默卡死。`BleObdManager` 直接操作 Android BLE 框架類別，沒有對應的純 JVM 單元測試（跟其他同類別檔案一致，只能靠 `BleObdClient` 介面的 fake 測試上層邏輯），這次修正需要實機驗證才能確認解決。
+
+### 2026-09-08（第二十一輪：實測發現第二十輪的 BLE 看門狗修正把情況搞得更糟，改成更有耐心的重試策略；另外處理圖示超出邊界、版面留白、橫式閃退、檔位更新頻率/單位）
+
+第二十輪的 5 秒逾時看門狗部署後實測，log 顯示 `服務探索逾時，重試一次` 接著 `服務探索重試後仍逾時，中斷連線`——結果比修之前更差：使用者回報「現在第一次都不會自動連線，5 秒斷線後也不會再自動連線」。回頭檢視：第二十輪的假設（`onServicesDiscovered` 永遠不會被呼叫）可能下錯結論——比較合理的解讀是探索服務本來就會**偶爾很慢**（尤其冷開機第一次連線），5 秒／重試 5 秒的預算太短，反而在真的還在跑的連線完成前就先把它砍斷；而且 `DashboardViewModel` 的自動連線只有「每次 App 啟動嘗試一次」的機制（`autoConnectAttempted` 旗標），被看門狗砍斷的那次已經用掉這唯一一次機會，之後就永遠不會再自動重連，除非手動重開 App。
+
+兩處都改：
+- `BleObdManager`：逾時時間拉長到 15 秒，重試次數上限 2 次；而且重試不再只是對同一個（可能已經卡死的）`gatt` 物件重呼叫 `discoverServices()`，而是關閉舊的 GATT、對同一台裝置重新走一次完整的 `connectGatt()`（新增 `beginGattConnection()` 共用邏輯），避免問題出在連線本身而不只是探索服務這個環節。真的兩次都逾時才放棄斷線。
+- `DashboardViewModel`：只有「本來已經 READY/INITIALIZING、後來意外斷線」（`DISCONNECTED_AFTER_ERROR`）才會重設 `autoConnectAttempted` 並重新開始掃描——讓連線失敗後能自己找回曾連線過的裝置重試，不需要使用者手動重開 App；一般的手動斷線（`DISCONNECTED`）或掃描/權限錯誤（`ERROR`）則不會觸發，避免不必要地重掃。
+
+其餘回報項目：
+- **App 圖示超出邊框**：第一版圖示直接沿用 App 內儀表板的圓弧半徑（36），結果被這支手機啟動器的 adaptive icon 遮罩裁切露出鋸齒——實際機型遮罩比官方安全區規格裁得更緊。全部幾何縮小到半徑 30，並在儀表弧本來就空出來的底部扇形加了一個排氣閥造型的小配件（呼應使用者提供的 iOBD2／Car Scanner ELM OBD2 參考圖示的引擎意象），維持儀表指針為主要造型不變。
+- **標題列與狀態列間留白過大**：`LazyColumn` 的 `contentPadding` 頂部從 12dp 降到 2dp，`TopAppBar` 高度從預設 64dp（是給雙行標題留的，但廠牌+VIN 已經合併成一行）改成 `expandedHeight = 48dp`。
+- **橫式閃退＋BLE 斷線**：`MainActivity` 的 `LaunchedEffect(Unit) { requestScanOrStart() }` 會在 Activity 因旋轉被系統重建時再跑一次，對著已經連線中的裝置重新呼叫 `startScan()`，把 `BleObdManager` 的連線狀態污染成 `SCANNING`。修法是在 manifest 幫 `MainActivity` 鎖定 `android:screenOrientation="portrait"`——這個儀表板本來就是雙儀表並排的直式版面設計，鎖定直式可以整類問題一次避開，不需要另外做橫式版面。
+- **檔位更新太慢、單位不該是 raw**：`citroen.json` 目前約 20 個私有 PID 共用同一個 3 秒／顆的慢速輪詢清單，`gearRaw` 排在清單裡，一輪跑完可能要等將近一分鐘才輪到它再問一次。新增 schema v4 欄位 `fastPoll`（見上方章節），把 `gearRaw` 標成 `fastPoll: true`，讓它獨立跑一個 800ms 的輪詢迴圈，不受同一份 profile 裡其他變化很慢的 PID 拖累。單位從 `raw` 改成『檔』：回頭讀原始碼 `nico1080/OBD-LCD-display-for-PSA` 的 `OBD-LCD.ino`，確認這個位元組原本就是直接當手排檔位數字顯示（`if (gear >= 1 && gear <= 6) print(gear)`），沒有 P/R/N/D 對照表，也沒有處理範圍外的值——`gearRaw` 這個公式本來就沒有算錯，只是顯示單位不對，已在 JSON 的 `notes` 裡記錄清楚這個限制。
+
+**待查、非本輪修正範圍**：`mapTempC`（進氣溫度 MAP）這次實測回報 `-39.0 degC`，對一輛正在運轉的引擎而言明顯不合理（除非在極端低溫環境）；現有公式 `A*0.75-48` 是直接沿用 `citroen.json` 既有的、未逐一驗證的資料，這次沒有新的可信來源可以判斷是公式本身錯誤還是這台車的感測器讀值方式不同，先記錄下來，不在本輪動它。
+
+### 2026-09-08（第二十二輪：使用者貼參考 App 截圖問「這些資料能加入嗎」——拆解哪些是真 PID、哪些是算出來的、哪些跟 OBD 無關，並全面啟用 `universal-obd2.json`）
+
+使用者貼了 7 張別的 OBD 儀表板 App 截圖（巡航/車身狀態/HUD/油耗/怠速/競技等多頁儀表），問裡面的參數能不能加進來。逐一拆解：
+
+1. **轉速、車速、水溫、電瓶電壓、點火正時、計算負荷值（引擎負載）**——全部是真的標準 Mode 01 PID，而且早就定義在 `universal-obd2.json` 裡；`engineLoadPercent` 只是定義了但沒有被排進 `STANDARD_EXTRA_FIELDS` 實際輪詢清單，補進去即可。
+2. **瞬時油耗、平均油耗、總耗油量、行駛時間、行駛里程、加速度**——沒有一個是車子直接回報的 PID，全部是業界通用的「行車電腦」算法：瞬時油耗用進氣流量 MAF（本來就有 `mafGramsPerSec` 這個標準 PID）換算成油耗率，配上車速算 L/100km；里程/時間靠速度對時間積分；加速度是車速對時間微分。這批「衍生值」用 `AskUserQuestion` 跟使用者確認範圍（先做不含油價/花費），確認後才動手。
+3. **羅盤方位**——跟 OBD 完全無關，是手機自己的磁力感測器，已經在先前規劃裡歸類到「未來導航功能」，這輪不做。
+
+**行車電腦實作**：`DashboardViewModel` 新增 `updateTripComputer()`，在既有的快速輪詢迴圈（原本只有轉速+車速）裡加一個 MAF 查詢（`mafGramsPerSec`，不放進慢速清單，因為瞬時油耗要跟車速同一個節奏才有意義），每個 tick 算：
+- 瞬時油耗＝`MAF*3600/(14.7*750)` 換算成 L/h，再除以車速 ×100 得 L/100km（車速趨近 0 時改顯示 L/h，因為 L/100km 在低速時會趨近無限大，沒有意義）——公式假設汽油理論空燃比 14.7、密度 750 g/L，如果是柴油車常數會有點不同（約 14.5、832 g/L），但量級不會差太多；這**永遠是估算值，不是原始 PID**，這點寫進了程式註解。
+- 平均油耗＝累計耗油量／累計里程 ×100
+- 里程／時間用車速對輪詢週期（200ms）積分
+- 加速度＝車速變化量／時間
+
+有個容易忽略的坑：如果在「暫停快速迴圈」期間（例如手動指令、ECU 支援測試可能暫停好幾秒）還繼續用最後一次讀到的車速去積分里程/油耗，會把靜止不動的那幾秒錯當成「一直維持那個車速在跑」，虛長出不存在的里程——已加上判斷，暫停期間只累計「行駛時間」（這個本來就該照跑），不累計里程/油耗/加速度。補上 `estimatesInstantFuelConsumptionFromMafAndSpeed`／`showsInstantFuelConsumptionInLitersPerHourWhileStationary` 兩個測試鎖住換算公式。
+
+**全面啟用 `universal-obd2.json`**：使用者接著要求「有定義在資料庫裡、OBD 又有支援的都應該顯示」——`STANDARD_EXTRA_FIELDS` 原本只有 4 個欄位，`universal-obd2.json` 其實定義了 40 個（扣掉車速/轉速/MAF）。既然這個 App 既有的「連續失敗 5 次永久放棄」機制本來就會讓車輛答不出來的 PID 自動停止查詢，多開 36 個欄位不會有額外風險，只是多花一點頻寬——全部加進輪詢清單。其中 `throttlePercent`／`intakeManifoldPressureKPA`／`relativeThrottlePercent`／`relativeAcceleratorPedalPercent`／`driverDemandTorquePercent`／`actualEngineTorquePercent` 這幾個會隨駕駛動作即時變動，標成 `fastPoll: true`（沿用第二十一輪剛做的機制，這次也把 `restartStandardPolling()` 一起接上快慢分流，跟 `restartBrandPolling()` 共用同一個 `launchPidTicker`，只差寫入 `standardReadings` 還是 `extraReadings`）。
+
+**UI 分組**：40 個標準欄位 + 廠牌專屬欄位全部攤平在同一個格狀清單會太長，新增 `ParameterGroups.kt` 把欄位分成「行車電腦／引擎與動力／溫度／壓力／燃油與排放／電力與診斷／廠牌專屬」七個區塊，做法比照使用者提到的「時速跟轉速已經用一個區塊 group 起來」——沒被明確分類的欄位（也就是任何廠牌 PID）自動歸進「廠牌專屬」，不需要每加一個廠牌就手動維護分類清單。`testDebugUnitTest`／`assembleDebug` 全部通過，實機重新安裝確認開啟不會閃退（沒有真的連上車，還無法實測分組畫面在有資料時的實際呈現）。
+
+### 2026-09-08（第二十三輪：新增手機 GPS 車速，跟 OBD 車速同格比對；回答目前輪詢頻率）
+
+使用者要求在車速方格裡加一個手機 GPS 算出來的車速，字體小一點、跟引擎（OBD）回報的車速放在同一個子區塊比較，更新頻率 1 秒一次。這跟前面所有 PID 資料查證完全不同——GPS 車速不是 OBD 資料，是手機自己的定位硬體，所以獨立設計、不影響現有的 PID 輪詢架構：
+
+- 新增 `gps/GpsSpeedSource.kt`（介面）＋ `AndroidGpsSpeedSource.kt`（用 `LocationManager.GPS_PROVIDER`，不用 Play Services 的融合定位，因為使用者明確要「手機的 GPS」；`minTime=1000ms` 對應「異動時間以一秒為單位」），比照 `BleObdClient` 的做法把 Android 定位 API 包成介面，`DashboardViewModel` 才能維持可單元測試、不直接碰 Android 框架類別。
+- `AndroidManifest.xml` 的 `ACCESS_FINE_LOCATION` 原本 `maxSdkVersion="30"`（只是 API 30 以下 BLE 掃描需要定位權限的副作用），拿掉上限，因為 GPS 車速在所有 Android 版本都需要真正的定位權限，跟 BLE 掃描是兩回事。
+- `MainActivity` 在 `onStart`/`onStop` 各自呼叫開始/停止追蹤——GPS 只在畫面看得到時才有意義，不像 BLE 連線要為了 Android Auto 共用而整個 process 生命週期都開著。
+- Gauge 元件新增 `secondaryValueText` 參數，只有車速那個 Gauge 會帶入 GPS 讀數（`"GPS %.0f".format(...)`），用比主要數字更小的字體、`secondary` 色系顯示在「km/h」單位文字下方，跟原本的 OBD 車速數字放在同一個方格裡。
+- 補上 `exposesGpsSpeedAlongsideObdSpeed` 測試（用 fake `GpsSpeedSource`），`testDebugUnitTest`／`assembleDebug` 全部通過，實機重裝後確認狀態列出現定位圖示（代表真的在讀 GPS），室內沒有訊號沒有車速讀數是預期行為，還沒有機會在室外/行駛中實測 GPS 車速跟 OBD 車速的實際落差。
+
+**目前輪詢頻率**（同一輪也回答了使用者的提問）：車速/轉速/MAF（行車電腦用）約 200ms 一輪；標記 `fastPoll: true` 的欄位（檔位、節氣門開度等 7 個）約 800ms 一個；其餘所有標準與廠牌 PID（現在近 40 個標準 + 廠牌專屬）每個 3 秒查一次，清單有幾個欄位就要等幾個 ×3 秒才輪到同一個欄位重問一次。

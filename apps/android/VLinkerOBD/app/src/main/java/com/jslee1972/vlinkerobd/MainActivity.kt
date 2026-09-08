@@ -34,6 +34,9 @@ class MainActivity : ComponentActivity() {
         ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
     }
 
+    private fun hasLocationPermission(): Boolean =
+        ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -69,9 +72,23 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                // GPS speed comparison (shown alongside the OBD speed gauge) is independent of the
+                // BLE permission flow above — on API 31+ BLE no longer needs location at all, but
+                // reading the phone's actual GPS still does, on every version.
+                val locationPermissionLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.RequestPermission(),
+                ) { granted -> if (granted) viewModel.startGpsTracking() }
+
                 // Auto-start scanning once when the app opens, so a remembered device can be
                 // auto-reconnected without the user tapping anything (see DashboardViewModel).
-                LaunchedEffect(Unit) { requestScanOrStart() }
+                LaunchedEffect(Unit) {
+                    requestScanOrStart()
+                    if (hasLocationPermission()) {
+                        viewModel.startGpsTracking()
+                    } else {
+                        locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+                    }
+                }
 
                 val displayState = if (permissionDenied && uiState.errorMessage == null) {
                     uiState.copy(errorMessage = PERMISSION_DENIED_MESSAGE)
@@ -93,5 +110,19 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    // GPS is only meaningful for the on-screen speed comparison — no reason to keep the radio on
+    // and drain battery while the app isn't visible (unlike the BLE connection itself, which stays
+    // up across Activity lifecycle for Android Auto to share — see VLinkerObdApplication).
+    override fun onStop() {
+        super.onStop()
+        (application as VLinkerObdApplication).dashboardViewModel.stopGpsTracking()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        val viewModel = (application as VLinkerObdApplication).dashboardViewModel
+        if (hasLocationPermission()) viewModel.startGpsTracking()
     }
 }

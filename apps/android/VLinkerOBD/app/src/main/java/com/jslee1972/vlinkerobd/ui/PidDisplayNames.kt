@@ -8,6 +8,12 @@ package com.jslee1972.vlinkerobd.ui
  */
 object PidDisplayNames {
     private val zh: Map<String, String> = mapOf(
+        // trip computer (derived, not a PID — see DashboardViewModel.updateTripComputer)
+        "instantFuelConsumption" to "瞬時油耗",
+        "averageFuelConsumption" to "平均油耗",
+        "acceleration" to "加速度",
+        "tripDistance" to "行駛里程",
+        "tripDuration" to "行駛時間",
         // universal-obd2.json
         "coolantTempC" to "水溫",
         "engineLoadPercent" to "引擎負載",
