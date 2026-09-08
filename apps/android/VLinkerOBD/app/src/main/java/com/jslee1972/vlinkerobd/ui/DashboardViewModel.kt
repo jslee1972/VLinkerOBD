@@ -45,6 +45,7 @@ class DashboardViewModel(
     externalScope: CoroutineScope? = null,
     private val brandDetector: VehicleBrandDetector = VehicleBrandDetector.FALLBACK,
     private val gpsSpeedSource: GpsSpeedSource = NoOpGpsSpeedSource,
+    private val customSectionStore: CustomSectionStore = NoOpCustomSectionStore,
 ) : ViewModel() {
 
     // Production uses viewModelScope (survives config changes, cancelled in onCleared); tests
@@ -75,8 +76,23 @@ class DashboardViewModel(
         universalProfile.pids.firstOrNull { it.field == field }
     }
 
+    // Every field this setup could ever report, for the custom-section field picker — universal
+    // + trip computer + every loaded brand profile's own fields (flattened models included), so a
+    // brand's PIDs show up in the picker without needing to be listed anywhere by hand.
+    private val allKnownFields: List<String> = (
+        universalProfile.pids.map { it.field } +
+            ParameterGroups.TRIP_COMPUTER_FIELDS +
+            brandProfiles.values.flatMap { profile ->
+                profile.pids.map { it.field } + profile.models.flatMap { model -> model.pids.map { it.field } }
+            }
+        ).distinct()
+
     private val _uiState = MutableStateFlow(
-        DashboardUiState(availableBrands = listOf(UNIVERSAL_BRAND) + brandProfiles.keys),
+        DashboardUiState(
+            availableBrands = listOf(UNIVERSAL_BRAND) + brandProfiles.keys,
+            allKnownFields = allKnownFields,
+            selectedCustomFields = customSectionStore.selectedFields(),
+        ),
     )
     val uiState: StateFlow<DashboardUiState> = _uiState.asStateFlow()
 
@@ -113,6 +129,15 @@ class DashboardViewModel(
     /** MainActivity calls this once location permission is granted; stopGpsTracking on pause/destroy. */
     fun startGpsTracking() = gpsSpeedSource.start()
     fun stopGpsTracking() = gpsSpeedSource.stop()
+
+    /** Adds/removes [field] from the dashboard's "自訂" section and persists the selection. */
+    fun toggleCustomField(field: String) {
+        val updated = _uiState.value.selectedCustomFields.let { current ->
+            if (field in current) current - field else current + field
+        }
+        customSectionStore.setSelectedFields(updated)
+        _uiState.update { it.copy(selectedCustomFields = updated) }
+    }
 
     fun connect(device: ScannedBleDevice) {
         connectingDevice = device
@@ -404,15 +429,16 @@ class DashboardViewModel(
             tripDistanceKm += speedKph * tickHours
             tripFuelLiters += fuelLitersPerHour * tickHours
 
-            val instantFormatted = if (speedKph > 1.0) {
-                "%.1f 升/百公里".format(fuelLitersPerHour / speedKph * 100.0)
+            // km/L ("每公升跑幾公里"), not L/100km — the requested display convention.
+            val instantFormatted = if (speedKph > 1.0 && fuelLitersPerHour > MIN_FUEL_RATE_FOR_ECONOMY_LPH) {
+                "%.1f 公里/公升".format(speedKph / fuelLitersPerHour)
             } else {
-                "%.2f 升/小時".format(fuelLitersPerHour)
+                "%.2f 公升/小時".format(fuelLitersPerHour)
             }
             _uiState.update { it.copy(standardReadings = it.standardReadings + ("instantFuelConsumption" to instantFormatted)) }
 
-            if (tripDistanceKm > 0.05) {
-                val avgFormatted = "%.1f 升/百公里".format(tripFuelLiters / tripDistanceKm * 100.0)
+            if (tripDistanceKm > 0.05 && tripFuelLiters > MIN_FUEL_FOR_AVERAGE_ECONOMY_L) {
+                val avgFormatted = "%.1f 公里/公升".format(tripDistanceKm / tripFuelLiters)
                 _uiState.update { it.copy(standardReadings = it.standardReadings + ("averageFuelConsumption" to avgFormatted)) }
             }
         }
@@ -576,6 +602,11 @@ class DashboardViewModel(
         private const val BRAND_POLL_INTERVAL_MS = 3000L
         private const val FAST_BRAND_POLL_INTERVAL_MS = 800L
         private const val STALE_THRESHOLD = 5
+        // Below these, fuel flow is negligible (e.g. deceleration fuel cut-off) and dividing
+        // distance by it would blow up to an absurd km/L figure — fall back to the L/h reading
+        // (still meaningful, just small) instead of a number that looks like a data error.
+        private const val MIN_FUEL_RATE_FOR_ECONOMY_LPH = 0.05
+        private const val MIN_FUEL_FOR_AVERAGE_ECONOMY_L = 0.01
         // Every universal-obd2.json field except speedKPH/rpm (dedicated fast-loop gauges) and
         // mafGramsPerSec (polled separately, at fast-loop cadence, for the trip computer). A field
         // this vehicle doesn't support just NO-DATAs and permanently backs off like any other

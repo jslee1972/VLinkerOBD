@@ -19,11 +19,14 @@ object ParameterGroups {
     /** Render order for the sections — trip computer and engine first as the most driving-relevant. */
     val displayOrder = listOf(TRIP_COMPUTER, ENGINE, TEMPERATURE, PRESSURE, FUEL_EMISSIONS, ELECTRICAL, BRAND_SPECIFIC)
 
+    /** The derived (non-PID) fields DashboardViewModel.updateTripComputer produces — also needed
+     * by the custom-section field picker's "known fields" list, so exposed rather than duplicated. */
+    val TRIP_COMPUTER_FIELDS = listOf(
+        "instantFuelConsumption", "averageFuelConsumption", "acceleration", "tripDistance", "tripDuration",
+    )
+
     private val groupByField: Map<String, String> = buildMap {
-        putAllFor(
-            TRIP_COMPUTER,
-            "instantFuelConsumption", "averageFuelConsumption", "acceleration", "tripDistance", "tripDuration",
-        )
+        putAllFor(TRIP_COMPUTER, *TRIP_COMPUTER_FIELDS.toTypedArray())
         putAllFor(
             ENGINE,
             "engineLoadPercent", "throttlePercent", "relativeThrottlePercent", "relativeAcceleratorPedalPercent",

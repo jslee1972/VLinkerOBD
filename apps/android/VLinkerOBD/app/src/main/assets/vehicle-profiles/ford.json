@@ -8,7 +8,7 @@
     {
       "request": "22404C",
       "field": "odometerKM",
-      "unit": "km",
+      "unit": "公里",
       "ecuHeader": "720",
       "ecuReceiveFilter": "728",
       "bitField": {"bitIndex": 0, "bitLength": 24, "divisor": 10, "max": 1677721},

@@ -11,9 +11,9 @@
     {"request": "22D870", "field": "evBatteryMaxCellVoltageV", "unit": "V", "ecuHeader": "6B4", "ecuReceiveFilter": "694", "formula": "((A*256)+B)/1000", "verified": "community"},
     {"request": "22D865", "field": "evBatteryAvailableKWh", "unit": "kWh", "ecuHeader": "6B4", "ecuReceiveFilter": "694", "formula": "((A*256)+B)/64", "verified": "community"},
     {"request": "22D860", "field": "evBatterySohPercent", "unit": "%", "ecuHeader": "6B4", "ecuReceiveFilter": "694", "formula": "((A*65536)+(B*256)+C-65536)/16", "verified": "community"},
-    {"request": "22D434", "field": "evAmbientTempC", "unit": "degC", "ecuHeader": "6A2", "ecuReceiveFilter": "682", "bitField": {"bitIndex": 0, "bitLength": 8, "signed": true}, "verified": "community"},
-    {"request": "22D8EF", "field": "evBatteryTempC", "unit": "degC", "ecuHeader": "6A2", "ecuReceiveFilter": "682", "bitField": {"bitIndex": 0, "bitLength": 8, "signed": true}, "verified": "community"},
-    {"request": "22D8CE", "field": "evDcDcConverterTempC", "unit": "degC", "ecuHeader": "6A2", "ecuReceiveFilter": "682", "bitField": {"bitIndex": 8, "bitLength": 8, "signed": true}, "verified": "community"},
-    {"request": "22D8E1", "field": "evOnboardChargerTempC", "unit": "degC", "ecuHeader": "6A2", "ecuReceiveFilter": "682", "bitField": {"bitIndex": 8, "bitLength": 8, "signed": true}, "verified": "community"}
+    {"request": "22D434", "field": "evAmbientTempC", "unit": "度", "ecuHeader": "6A2", "ecuReceiveFilter": "682", "bitField": {"bitIndex": 0, "bitLength": 8, "signed": true}, "verified": "community"},
+    {"request": "22D8EF", "field": "evBatteryTempC", "unit": "度", "ecuHeader": "6A2", "ecuReceiveFilter": "682", "bitField": {"bitIndex": 0, "bitLength": 8, "signed": true}, "verified": "community"},
+    {"request": "22D8CE", "field": "evDcDcConverterTempC", "unit": "度", "ecuHeader": "6A2", "ecuReceiveFilter": "682", "bitField": {"bitIndex": 8, "bitLength": 8, "signed": true}, "verified": "community"},
+    {"request": "22D8E1", "field": "evOnboardChargerTempC", "unit": "度", "ecuHeader": "6A2", "ecuReceiveFilter": "682", "bitField": {"bitIndex": 8, "bitLength": 8, "signed": true}, "verified": "community"}
   ]
 }

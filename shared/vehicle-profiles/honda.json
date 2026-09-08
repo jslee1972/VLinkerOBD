@@ -35,7 +35,7 @@
     {
       "request": "22202C",
       "field": "engineCoolantTemp1C",
-      "unit": "degC",
+      "unit": "度",
       "ecuHeader": "DA10",
       "ecuReceiveFilter": "10",
       "bitField": {"bitIndex": 1608, "bitLength": 16, "divisor": 10, "signed": true, "min": -40, "max": 215},
@@ -44,7 +44,7 @@
     {
       "request": "22202C",
       "field": "engineCoolantTemp2C",
-      "unit": "degC",
+      "unit": "度",
       "ecuHeader": "DA10",
       "ecuReceiveFilter": "10",
       "bitField": {"bitIndex": 1624, "bitLength": 16, "divisor": 10, "signed": true, "min": -40, "max": 215},
@@ -62,7 +62,7 @@
     {
       "request": "222660",
       "field": "odometerKM",
-      "unit": "km",
+      "unit": "公里",
       "ecuHeader": "DA10",
       "ecuReceiveFilter": "10",
       "bitField": {"bitIndex": 344, "bitLength": 24, "max": 16777215},

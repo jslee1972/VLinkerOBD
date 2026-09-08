@@ -135,18 +135,25 @@ fun Gauge(
             }
 
             val displayValue = if (animatedValue.isNaN()) "--" else animatedValue.roundToInt().toString()
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(0.dp)) {
-                Text(text = displayValue, style = GaugeNumeralStyle, color = MaterialTheme.colorScheme.onBackground)
-                Text(
-                    text = unit,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            Box {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                    Text(text = displayValue, style = GaugeNumeralStyle, color = MaterialTheme.colorScheme.onBackground)
+                    Text(
+                        text = unit,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                // A second, independent reading (e.g. phone GPS speed vs. the vehicle's own
+                // OBD-reported speed) — bigger than a caption but clearly smaller than the main
+                // value, tucked into its bottom-right corner rather than stacked in the flow so it
+                // reads as "for comparison" rather than a third line of the primary reading.
                 secondaryValueText?.let {
                     Text(
                         text = it,
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                         color = MaterialTheme.colorScheme.secondary,
+                        modifier = Modifier.align(Alignment.BottomEnd).offset(x = 14.dp, y = 4.dp),
                     )
                 }
             }

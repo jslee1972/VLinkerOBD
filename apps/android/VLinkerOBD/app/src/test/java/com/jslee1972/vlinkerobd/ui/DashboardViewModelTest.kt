@@ -75,6 +75,18 @@ private class FakeDeviceMemory(private var address: String? = null) : DeviceMemo
     }
 }
 
+private class FakeCustomSectionStore(initial: Set<String> = emptySet()) : CustomSectionStore {
+    private var fields = initial
+    val savedCalls = mutableListOf<Set<String>>()
+
+    override fun selectedFields(): Set<String> = fields
+
+    override fun setSelectedFields(fields: Set<String>) {
+        this.fields = fields
+        savedCalls += fields
+    }
+}
+
 private class FakeGpsSpeedSource : GpsSpeedSource {
     private val _speedKph = MutableStateFlow<Float?>(null)
     override val speedKph: StateFlow<Float?> = _speedKph
@@ -228,6 +240,40 @@ class DashboardViewModelTest {
     }
 
     @Test
+    fun loadsAndPersistsCustomSectionFieldSelection() = runTest(dispatcher) {
+        val client = FakeBleObdClient()
+        val store = FakeCustomSectionStore(initial = setOf("coolantTempC"))
+        val hondaProfile = VehicleProfile(
+            profileId = "honda",
+            brand = "Honda",
+            pids = listOf(PidDefinition(request = "222662", field = "batteryVoltage", unit = "V", formula = "A")),
+        )
+        val viewModel = DashboardViewModel(
+            client,
+            universalProfile,
+            mapOf("Honda" to hondaProfile),
+            externalScope = backgroundScope,
+            customSectionStore = store,
+        )
+        runCurrent()
+
+        // Initial selection loaded from the store.
+        assertEquals(setOf("coolantTempC"), viewModel.uiState.value.selectedCustomFields)
+        // Known fields include universal + trip computer + every loaded brand's own fields.
+        assertTrue("speedKPH" in viewModel.uiState.value.allKnownFields)
+        assertTrue("batteryVoltage" in viewModel.uiState.value.allKnownFields)
+        assertTrue("instantFuelConsumption" in viewModel.uiState.value.allKnownFields)
+
+        viewModel.toggleCustomField("rpm")
+        assertEquals(setOf("coolantTempC", "rpm"), viewModel.uiState.value.selectedCustomFields)
+        assertEquals(setOf("coolantTempC", "rpm"), store.savedCalls.last())
+
+        viewModel.toggleCustomField("coolantTempC")
+        assertEquals(setOf("rpm"), viewModel.uiState.value.selectedCustomFields)
+        assertEquals(setOf("rpm"), store.savedCalls.last())
+    }
+
+    @Test
     fun updatesSpeedFromPollResponse() = runTest(dispatcher) {
         val client = FakeBleObdClient()
         val viewModel = DashboardViewModel(client, universalProfile, externalScope = backgroundScope)
@@ -260,9 +306,9 @@ class DashboardViewModelTest {
         assertEquals("0110\r", client.writes.last())
 
         // MAF = 0x2710/100 = 100.0 g/s. fuelLPerHour = 100*3600/(14.7*750) = 32.653...
-        // instant L/100km = fuelLPerHour / speedKph * 100 = 32.653/60*100 = 54.4
+        // instant km/L = speedKph / fuelLPerHour = 60/32.653 = 1.8375 -> 1.8
         client.respondToNextWrite("41 10 27 10\r>")
-        assertEquals("54.4 升/百公里", viewModel.uiState.value.standardReadings["instantFuelConsumption"])
+        assertEquals("1.8 公里/公升", viewModel.uiState.value.standardReadings["instantFuelConsumption"])
     }
 
     @Test
@@ -278,10 +324,10 @@ class DashboardViewModelTest {
 
         client.respondToNextWrite("41 0C 03 E8\r>") // rpm -> 250 (idling)
         client.respondToNextWrite("41 0D 00\r>") // speed -> 0 km/h, cascades into the MAF poll
-        // L/100km is meaningless at a standstill (division by ~0) — show L/h instead, matching
-        // how idle-specific gauges on reference dashboards label this same quantity.
+        // km/L is meaningless at a standstill (division by ~0) — show L/h instead, matching how
+        // idle-specific gauges on reference dashboards label this same quantity.
         client.respondToNextWrite("41 10 27 10\r>") // MAF -> 100.0 g/s -> 32.65 L/h
-        assertEquals("32.65 升/小時", viewModel.uiState.value.standardReadings["instantFuelConsumption"])
+        assertEquals("32.65 公升/小時", viewModel.uiState.value.standardReadings["instantFuelConsumption"])
     }
 
     @Test

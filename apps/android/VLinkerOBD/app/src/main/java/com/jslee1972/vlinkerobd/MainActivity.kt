@@ -105,6 +105,7 @@ class MainActivity : ComponentActivity() {
                     onSendManualCommand = viewModel::sendManualCommand,
                     onClearLogs = viewModel::clearLogs,
                     onTestEcuSupport = viewModel::testEcuSupport,
+                    onToggleCustomField = viewModel::toggleCustomField,
                     dtcDescriptions = dtcDescriptions,
                     modifier = Modifier.fillMaxSize(),
                 )

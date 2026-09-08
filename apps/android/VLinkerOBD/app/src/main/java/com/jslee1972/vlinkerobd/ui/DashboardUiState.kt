@@ -41,4 +41,9 @@ data class DashboardUiState(
     val isTestingEcu: Boolean = false,
     /** Phone GPS-derived speed (km/h), shown alongside the OBD-reported speed for comparison. */
     val gpsSpeedKph: Float? = null,
+    /** Every field this profile setup could ever report — universal + trip computer + every
+     * loaded brand profile's own fields — for the custom-section field picker. */
+    val allKnownFields: List<String> = emptyList(),
+    /** Fields the user pinned into the dashboard's own "自訂" section, persisted across launches. */
+    val selectedCustomFields: Set<String> = emptySet(),
 )

@@ -8,6 +8,7 @@ import com.jslee1972.vlinkerobd.obd.DtcDescriptions
 import com.jslee1972.vlinkerobd.obd.PidGroupRepository
 import com.jslee1972.vlinkerobd.obd.VehicleBrandDetector
 import com.jslee1972.vlinkerobd.ui.DashboardViewModel
+import com.jslee1972.vlinkerobd.ui.SharedPreferencesCustomSectionStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -70,6 +71,7 @@ class VLinkerObdApplication : Application() {
             externalScope = appScope,
             brandDetector = brandDetector,
             gpsSpeedSource = AndroidGpsSpeedSource(applicationContext),
+            customSectionStore = SharedPreferencesCustomSectionStore(applicationContext),
         )
     }
 }

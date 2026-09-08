@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
@@ -23,6 +24,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocalGasStation
 import androidx.compose.material.icons.filled.MoreVert
@@ -35,6 +37,7 @@ import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -83,6 +86,7 @@ fun DashboardScreen(
     onSendManualCommand: (String) -> Unit,
     onClearLogs: () -> Unit,
     onTestEcuSupport: () -> Unit,
+    onToggleCustomField: (String) -> Unit,
     dtcDescriptions: DtcDescriptions,
     modifier: Modifier = Modifier,
 ) {
@@ -91,6 +95,7 @@ fun DashboardScreen(
     var showDiagnostics by remember { mutableStateOf(false) }
     var showDevicePicker by remember { mutableStateOf(false) }
     var showEcuTest by remember { mutableStateOf(false) }
+    var showCustomFieldPicker by remember { mutableStateOf(false) }
 
     Scaffold(
         modifier = modifier,
@@ -205,9 +210,9 @@ fun DashboardScreen(
                             label = "車速",
                             unit = "km/h",
                             modifier = Modifier.weight(1f).testTag("speed_value"),
-                            // GPS speed shown small underneath for a real-world sanity check
-                            // against the vehicle's own OBD-reported speed.
-                            secondaryValueText = state.gpsSpeedKph?.let { "GPS %.0f".format(it) },
+                            // GPS speed shown as a plain number (no "GPS" label) at the bottom-
+                            // right of the main OBD-reported value, for a quick sanity comparison.
+                            secondaryValueText = state.gpsSpeedKph?.let { "%.0f".format(it) },
                             trendContent = if (state.speedHistory.size >= 2) {
                                 {
                                     TrendChart(
@@ -246,35 +251,51 @@ fun DashboardScreen(
                 }
             }
 
-            state.troubleCodes?.let { codes ->
-                if (codes.isEmpty()) {
-                    item {
-                        Text(
-                            "無故障碼",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.testTag("trouble_codes"),
-                        )
+            item {
+                Row(
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    SectionLabel("自訂")
+                    IconButton(
+                        onClick = { showCustomFieldPicker = true },
+                        modifier = Modifier.size(28.dp).testTag("edit_custom_section"),
+                    ) {
+                        Icon(Icons.Default.Edit, contentDescription = "編輯自訂區塊", modifier = Modifier.size(18.dp))
                     }
-                } else {
-                    item {
-                        Card(
-                            onClick = { showTroubleCodeDetail = true },
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("trouble_codes"),
-                        ) {
-                            Text(
-                                text = "⚠ 偵測到 ${codes.size} 個故障碼，點擊查看詳情",
-                                color = MaterialTheme.colorScheme.onErrorContainer,
-                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                                modifier = Modifier.padding(14.dp),
-                            )
+                }
+            }
+            val customEntries = (state.standardReadings + state.extraReadings)
+                .filterKeys { it in state.selectedCustomFields }
+                .toSortedMap()
+            if (customEntries.isEmpty()) {
+                item {
+                    Text(
+                        text = "尚未選擇任何參數，點右上角編輯圖示新增",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.testTag("custom_section_empty"),
+                    )
+                }
+            } else {
+                item {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(2),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.heightIn(max = 600.dp).testTag("custom_section_grid"),
+                    ) {
+                        gridItems(customEntries.entries.toList(), key = { it.key }) { (field, value) ->
+                            ParameterStatCard(field, value)
                         }
                     }
                 }
             }
+
+            // No inline "no fault codes" line and no extra fault-summary card here — the top-right
+            // warning badge (see the TopAppBar actions) is the only DTC indicator; tapping it opens
+            // the same trouble-code detail dialog.
 
             // Standard PIDs and brand-specific PIDs are both "live vehicle readings" from the
             // user's point of view — auto-detected/auto-polled the moment data is available,
@@ -342,6 +363,15 @@ fun DashboardScreen(
             state = state,
             onRunTest = onTestEcuSupport,
             onDismiss = { showEcuTest = false },
+        )
+    }
+
+    if (showCustomFieldPicker) {
+        CustomFieldPickerDialog(
+            allFields = state.allKnownFields,
+            selectedFields = state.selectedCustomFields,
+            onToggleField = onToggleCustomField,
+            onDismiss = { showCustomFieldPicker = false },
         )
     }
 }
@@ -709,6 +739,88 @@ private fun EcuTestResultRow(result: EcuTestResult) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun CustomFieldPickerDialog(
+    allFields: List<String>,
+    selectedFields: Set<String>,
+    onToggleField: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    // Which field's "i" was tapped — shown as a separate small dialog on top of this full-screen one.
+    var infoField by remember { mutableStateOf<String?>(null) }
+
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
+            Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "關閉")
+                    }
+                    Text("選擇自訂區塊參數", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                }
+
+                val grouped = allFields.groupBy { ParameterGroups.groupFor(it) }
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize().padding(top = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    for (group in ParameterGroups.displayOrder) {
+                        val fields = grouped[group]?.sorted() ?: continue
+                        item(key = "picker_section_$group") { SectionLabel(group) }
+                        items(fields, key = { "picker_field_$it" }) { field ->
+                            CustomFieldPickerRow(
+                                field = field,
+                                checked = field in selectedFields,
+                                onCheckedChange = { onToggleField(field) },
+                                onInfoClick = { infoField = field },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    infoField?.let { field ->
+        AlertDialog(
+            onDismissRequest = { infoField = null },
+            confirmButton = { TextButton(onClick = { infoField = null }) { Text("關閉") } },
+            title = { Text(PidDisplayNames.displayName(field)) },
+            text = { Text(ParameterDescriptions.description(field)) },
+        )
+    }
+}
+
+@Composable
+private fun CustomFieldPickerRow(
+    field: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    onInfoClick: () -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("custom_field_row_$field"),
+    ) {
+        Checkbox(checked = checked, onCheckedChange = onCheckedChange, modifier = Modifier.testTag("custom_field_checkbox_$field"))
+        Text(
+            text = PidDisplayNames.displayName(field),
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f),
+        )
+        IconButton(onClick = onInfoClick, modifier = Modifier.size(32.dp).testTag("custom_field_info_$field")) {
+            Icon(
+                Icons.Default.Info,
+                contentDescription = "${PidDisplayNames.displayName(field)}說明",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp),
+            )
         }
     }
 }

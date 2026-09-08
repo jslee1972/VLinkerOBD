@@ -342,3 +342,19 @@ VR7 修好、廠牌成功辨識成 Citroen 後，第一次連上真的開始輪�
 - 補上 `exposesGpsSpeedAlongsideObdSpeed` 測試（用 fake `GpsSpeedSource`），`testDebugUnitTest`／`assembleDebug` 全部通過，實機重裝後確認狀態列出現定位圖示（代表真的在讀 GPS），室內沒有訊號沒有車速讀數是預期行為，還沒有機會在室外/行駛中實測 GPS 車速跟 OBD 車速的實際落差。
 
 **目前輪詢頻率**（同一輪也回答了使用者的提問）：車速/轉速/MAF（行車電腦用）約 200ms 一輪；標記 `fastPoll: true` 的欄位（檔位、節氣門開度等 7 個）約 800ms 一個；其餘所有標準與廠牌 PID（現在近 40 個標準 + 廠牌專屬）每個 3 秒查一次，清單有幾個欄位就要等幾個 ×3 秒才輪到同一個欄位重問一次。
+
+### 2026-09-08（第二十四輪：GPS 顯示簡化、油耗改 km/L、新增「自訂」區塊＋參數說明、隱藏無故障碼提示、單位中文化）
+
+使用者針對前一輪成果（GPS 車速、行車電腦、全欄位分組）貼了 4 張截圖＋8 點回饋（第 8 點留空），本輪處理第 1–6 點：
+
+1. **GPS 副數字簡化**：拿掉「GPS」文字前綴，直接顯示數字，字級從極小調成 `titleSmall`／`Bold`，位置移到主數字（引擎 OBD 車速）的右下角（`Gauge.kt` 把主數字＋副數字包進同一個 `Box`，副數字用 `Modifier.align(Alignment.BottomEnd)` 疊上去），視覺上維持「引擎數字為主、GPS 數字明顯較小」的比例。
+2. **油耗改成公升/公里（km/L）**：使用者上一輪確認過 L/100km 格式，這輪改口要「每公升跑幾公里」——重新檢查發現這其實是同一組原始資料（瞬時油耗率 L/h、車速）換一種除法方向即可，不需要重新設計行車電腦。`updateTripComputer()` 的瞬時/平均油耗改成 `車速 ÷ 油耗率` 得 km/L，車速趨近 0 或油耗率趨近 0 時（同樣有 `MIN_FUEL_RATE_FOR_ECONOMY_LPH`／`MIN_FUEL_FOR_AVERAGE_ECONOMY_L` 門檻避免除以極小值爆出離譜大數）改顯示「公升/小時」瞬時流量，邏輯跟上一輪一樣、只是分子分母互換＋單位字串跟著換。兩個既有測試（`estimatesInstantFuelConsumptionFromMafAndSpeed`／`showsInstantFuelConsumptionInLitersPerHourWhileStationary`）同步改成驗證新的 km/L 數值與字串。
+3. **新增「自訂」區塊**：使用者要能自己勾選想優先看到的參數（通用＋廠牌私有都要能選），位置在車速/轉速儀表下方。設計上比照既有 `DeviceMemory`（記住裝置）模式，新增 `CustomSectionStore` 介面＋`SharedPreferencesCustomSectionStore` 實作＋`NoOpCustomSectionStore`（測試/未初始化時的預設值），把選取的欄位名稱集合存進 SharedPreferences 的一個 `StringSet`；`DashboardViewModel` 新增 `allKnownFields`（=通用 PID＋行車電腦欄位＋所有已載入廠牌 profile 的 PID，取 `distinct()`——刻意不寫死清單，這樣以後隨便加一個廠牌 profile，欄位會自動出現在可勾選清單裡，不用兩處維護）與 `selectedCustomFields`，`toggleCustomField()` 負責勾選/取消並立刻持久化。`DashboardScreen.kt` 在儀表卡片下方新增自訂區塊卡片（沒勾選任何欄位時顯示提示文字「尚未選擇任何參數，點右上角編輯圖示新增」），右上角編輯圖示開一個 `CustomFieldPickerDialog` 全螢幕勾選清單，一樣用 `ParameterGroups` 分組顯示。
+   - 有個 SharedPreferences 常見陷阱要注意：`putStringSet` 如果直接傳呼叫端還持有參照的可變集合，之後呼叫端改了那個集合會連帶污染已經存進去的偏好設定——`SharedPreferencesCustomSectionStore` 存的時候用 `.toSet()` 做一次防禦性複製。
+4. **每個可勾選參數加「i」說明圖示**：新增 `ParameterDescriptions.kt`，用一個 `field -> 繁中說明` 的對照表涵蓋 `universal-obd2.json` 全部欄位、5 個行車電腦衍生欄位、以及目前所有廠牌 profile（Citroën/Peugeot 含 EV DID、Mazda、Ford、Honda）的私有欄位——內容直接沿用這個專案先前已經逐項查證過的技術知識（SAE J1979-DA 正式規格、各廠牌 PID 的原始碼／論壇交叉比對記錄，都已經寫在本文件先前的輪次裡），不是這輪重新上網查的，遇到本來就標記「未驗證/沒有可信資料」的欄位（例如 `gearRaw` 沒有 P/R/N/D 對照表、EV-only 欄位在油車上不適用）在說明文字裡如實反映這個不確定性，沒有查到的欄位一律 fallback 顯示「尚無詳細說明。」而不是編造內容。`CustomFieldPickerDialog` 裡每一行勾選框旁邊加一個小小的 `Info` 圖示按鈕，點下去彈出 `AlertDialog` 顯示該欄位的中文名稱＋說明文字。
+5. **無故障碼時完全不顯示提示行**：拿掉 `DashboardScreen.kt` 裡「無故障碼」/ 故障碼清單那整塊 Card（原本沒有故障碼時會顯示一行「無故障碼」文字，有故障碼時額外顯示一張列表卡）；現在唯一的故障碼指示只剩 `TopAppBar` 右上角原本就有的 `BadgedBox`/`Badge` 警示角標，沒有故障碼時角標不出現、也不再有任何一行文字佔位。
+6. **溫度單位「度」＋全面單位中文化**：對 `shared/vehicle-profiles/*.json` 的 `unit` 欄位做全面複查，用 `sed` 批次替換：`degC`→`度`（8 個標準欄位＋7 個 Citroën 欄位）、`deg`→`度`（點火正時角度）、`s`→`秒`（行車電腦時間欄位）、`km`→`公里`、`L/h`→`公升/小時`、`L`→`公升`，`citroen-ev.json`／`honda.json`／`ford.json` 也同步套用 `度`／`公里` 替換；確認過改完沒有殘留還在用英文縮寫單位、且沒有動到本來就該保留原文的單位（如 `rpm`、`%`、`V`、`kPa`——這些沒有通用中文慣用縮寫，中文儀表 App 業界也普遍直接沿用原文）。改完的 JSON 照專案慣例同步 `cp` 覆蓋到 `app/src/main/assets/vehicle-profiles/`。
+
+全部 6 項改完 `testDebugUnitTest`／`assembleDebug` 一次就過（新增 `loadsAndPersistsCustomSectionFieldSelection` 測試涵蓋自訂區塊的載入與持久化），`installDebug` 部署到實機後靜態截圖（尚未連車、`掃描中` 狀態）確認：無故障碼提示行確實消失、「自訂」區塊卡片正確出現在儀表下方並顯示空清單提示文字——由於沒有連上車，GPS 副數字位置／中文單位顯示／km/L 油耗換算這幾項還沒有機會在有實際資料的情況下用肉眼複驗，需要下次實際開車測試時再確認。
+
+第 7 點（英文＋繁中雙語系，依手機 OS 語言自動切換）與第 8 點（原始訊息裡是空白，內容不明）這輪還沒有處理——第 7 點是把整個 App 目前散落在 `DashboardScreen.kt`／`PidDisplayNames`／`ParameterDescriptions`／`ParameterGroups`／`DtcDescriptions`／`MainActivity` 等處的大量寫死中文字串，全部改成 Android 標準的 `strings.xml` 多語系資源系統（`values/strings.xml` + `values-zh-rTW/strings.xml`），工程量遠大於前面 6 點的總和，且會牽動幾乎每一個 UI 檔案，決定先在這裡記錄範圍評估、之後跟使用者確認是否要在這個時間點投入，再開始動工，避免倉促做出一半的雙語系。
