@@ -41,6 +41,7 @@ class DashboardViewModel(
     private val brandProfiles: Map<String, VehicleProfile> = emptyMap(),
     private val deviceMemory: DeviceMemory = NoOpDeviceMemory,
     externalScope: CoroutineScope? = null,
+    private val brandDetector: VehicleBrandDetector = VehicleBrandDetector.FALLBACK,
 ) : ViewModel() {
 
     // Production uses viewModelScope (survives config changes, cancelled in onCleared); tests
@@ -288,7 +289,7 @@ class DashboardViewModel(
             appendLog("車款辨識：無法讀取 VIN（此車可能不支援 Mode 09）")
             return
         }
-        val brand = VehicleBrandDetector.detectBrand(vin)
+        val brand = brandDetector.detectBrand(vin)
         _uiState.update { it.copy(detectedVin = vin, detectedBrand = brand) }
         if (brand == null) {
             appendLog("車款辨識：VIN=$vin，無法辨識廠牌")

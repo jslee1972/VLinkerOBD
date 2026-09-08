@@ -5,6 +5,7 @@ import com.jslee1972.vlinkerobd.ble.BleObdManager
 import com.jslee1972.vlinkerobd.ble.SharedPreferencesDeviceMemory
 import com.jslee1972.vlinkerobd.obd.DtcDescriptions
 import com.jslee1972.vlinkerobd.obd.PidGroupRepository
+import com.jslee1972.vlinkerobd.obd.VehicleBrandDetector
 import com.jslee1972.vlinkerobd.ui.DashboardViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -54,12 +55,19 @@ class VLinkerObdApplication : Application() {
         )
         val bleClient = BleObdManager(applicationContext)
         val deviceMemory = SharedPreferencesDeviceMemory(applicationContext)
+        // Comprehensive WMI->brand lookup (shared/wmi-database, ~700 entries) rather than the
+        // small VehicleBrandDetector.FALLBACK set — the whole point is not to go back to missing
+        // WMIs like VR7 the way the hand-curated list did.
+        val brandDetector = VehicleBrandDetector.loadFromJson(
+            assets.open("wmi-database/wmi-to-brand.json").bufferedReader().use { it.readText() },
+        )
         dashboardViewModel = DashboardViewModel(
             bleClient = bleClient,
             universalProfile = universalProfile,
             brandProfiles = brandProfiles,
             deviceMemory = deviceMemory,
             externalScope = appScope,
+            brandDetector = brandDetector,
         )
     }
 }

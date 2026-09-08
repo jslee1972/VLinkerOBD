@@ -270,3 +270,15 @@ Citroën/Peugeot 目前已連續四輪查證（`autowp/psa-can` 不存在、OVMS
 **這裡踩到一個差點引入的真 bug**：把「略過」跟「跳過本次 delay」寫在一起的話，如果一個輪詢清單裡**所有** PID 都放棄了（例如這台車的 `citroen.json`+`citroen-ev.json` 私有 PID，因為 pin 3/8 硬體限制幾乎全部查不到——見第十五輪），`for` 迴圈會整輪都直接 `continue`、完全不會執行到任何 `delay(...)`，導致這個 coroutine 變成沒有任何暫停點的無限忙迴圈（busy-loop），在真實裝置上會讓一個 CPU 核心被卡滿、電量狂掉。修法是讓「放棄」分支也照樣 `delay(BRAND_POLL_INTERVAL_MS)` 再 `continue`，確保不管有幾個 PID 放棄，每一輪一定會經過至少一次暫停點。
 
 補上 `DashboardViewModelTest.stopsPollingStandardExtraPidPermanentlyAfterRepeatedFailures`：先驅動到某個標準延伸 PID 連續失敗 5 次放棄，再快轉 200 秒虛擬時間，斷言完全沒有再送出該 PID 的指令——如果 busy-loop 的修法沒做對，這個快轉呼叫會直接卡死不返回，而不是斷言失敗，等於順便驗證了不會卡死。`testDebugUnitTest`／`assembleDebug` 全部通過。
+
+### 2026-09-08（第十九輪：使用者要求「收集市面上所有的 WMI 並加到資料庫中，以避免遺漏」——把手刻的 ~90 筆 WMI 換成完整資料庫）
+
+第十七輪修 `VR7` 是頭痛醫頭：`VehicleBrandDetector.kt` 原本是寫死在程式碼裡的一個小表，只收錄本專案目前有 PID profile 的十幾個廠牌、每個廠牌只列幾組常見 WMI，本質上就是「遇到一個補一個」，不可能不再漏。
+
+改用真實存在的完整資料庫，而不是手動一筆一筆找：下載 [idlesign/vininfo](https://github.com/idlesign/vininfo)（MIT 授權、活躍維護的 Python VIN 解碼套件）的 `src/vininfo/dicts/wmi.py`，約 700 筆，涵蓋北美/歐洲/南美/中國/其他亞洲市場的車廠，含轎車、卡車、巴士、機車。原始碼裡部分項目不是純字串，而是 `Nissan()`、`Renault('Infiniti')` 這類物件——沒有用猜的，直接讀 vininfo 自己的 `common.py`（`Assembler.__init__`: `manufacturer = manufacturer or self.title`，`title` 是類別名稱）確認這些物件轉成字串後的實際值，再用一支轉換腳本（`convert_wmi.py`，僅本機執行、未收錄進 repo）把整份表轉成 `shared/wmi-database/wmi-to-brand.json`。
+
+轉換過程中把拼法/區域合資品牌的變體正規化成本專案 `shared/vehicle-profiles/*.json` 裡 `brand` 欄位已經在用的字串（例如 `"Mercedes Benz"`→`"Mercedes-Benz"`、`"Citroën"`→`"Citroen"`、`"FAW-Volkswagen"`→`"Volkswagen"`——後者是真的掛 VW 廠徽在賣的中國合資廠，不是不同廠牌），這樣比對到既有廠牌時能繼續自動選中對應的 PID profile；但像 `"DaimlerChrysler AG/Daimler AG"` 這種歷史上可能是 Mercedes-Benz 或 Chrysler 任一款車共用的 WMI，刻意不正規化、保留原始標籤，避免用猜的歸類到錯的廠牌。
+
+**誠實揭露涵蓋範圍**：這是「相對完整」，不是「窮舉」——沒有任何單一免費公開來源涵蓋所有曾經核發過的 WMI（SAE 是美洲的官方註冊機構，其他國家各自有自己的核發單位，這份清冊本身也是別人整理自各種二手來源），~700 筆已經涵蓋消費用 OBD-II App 實務上絕大多數會遇到的車，包含這次的導火線 `VR7`，但真的很冷門或剛核發的 WMI 還是可能查不到。`detectBrand()` 回傳 `null` 的意思是「這份資料庫今天沒收錄」，不是「這不是真車」——這點寫進了 `shared/wmi-database/README.md`，往後再遇到類似 `VR7` 的個案，做法一樣：補進去、附來源、記錄在這裡。
+
+架構上把 `VehicleBrandDetector` 從寫死的 `object` 改成吃 `Map<String, String>` 的 `class`，比照 `PidGroupRepository` 的模式從 JSON asset 載入（`VehicleBrandDetector.loadFromJson()`），另外保留一個 `VehicleBrandDetector.FALLBACK`（就是原本那張小表，含 `VR7`）當作沒載入完整資料庫時的預設值——單元測試與 `DashboardViewModel` 的預設參數都用這個，production 則在 `VLinkerObdApplication` 明確載入完整的 `wmi-database/wmi-to-brand.json`。順帶支援了來源表裡本來就有的 2 碼萬用碼（例如 `"JT"`→Toyota，代表沒有被特定 3 碼細分的車廠家族碼）：查詢時先比對完整 3 碼，找不到才退而比對前 2 碼。補上 `VehicleBrandDetectorTest` 的 JSON 載入與 2 碼 fallback 測試，`testDebugUnitTest`／`assembleDebug` 全部通過。
