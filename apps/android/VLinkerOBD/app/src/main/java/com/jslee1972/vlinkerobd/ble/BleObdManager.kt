@@ -16,6 +16,12 @@ import android.os.Build
 import com.jslee1972.vlinkerobd.obd.ObdTransport
 import java.util.UUID
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -56,6 +62,11 @@ class BleObdManager(private val context: Context) : BleObdClient, ObdTransport {
     private var writeCharacteristic: BluetoothGattCharacteristic? = null
     private var pendingWrite: CompletableDeferred<Result<Unit>>? = null
     private val seenAddresses = mutableSetOf<String>()
+
+    // Owns the service-discovery watchdog (see startDiscoveryWatchdog) — outlives any single
+    // connection attempt, so it isn't cancelled and recreated on every connect() call.
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var discoveryWatchdog: Job? = null
 
     private fun log(message: String) {
         _logs.tryEmit(message)
@@ -132,6 +143,8 @@ class BleObdManager(private val context: Context) : BleObdClient, ObdTransport {
     }
 
     override fun disconnect() {
+        discoveryWatchdog?.cancel()
+        discoveryWatchdog = null
         try {
             gatt?.disconnect()
             gatt?.close()
@@ -144,6 +157,37 @@ class BleObdManager(private val context: Context) : BleObdClient, ObdTransport {
         pendingWrite = null
         _connectionState.value = ConnectionState.DISCONNECTED
         log("已中斷連線")
+    }
+
+    /**
+     * Android's BLE stack occasionally never calls back [BluetoothGattCallback.onServicesDiscovered]
+     * after [BluetoothGatt.discoverServices] — observed in the field specifically on a phone's
+     * first auto-reconnect to a remembered device right after the app starts (subsequent manual
+     * reconnects work fine), which otherwise leaves the connection stuck in DISCOVERING_GATT
+     * forever with no error and no way to recover short of force-quitting the app. If discovery
+     * hasn't completed within [SERVICE_DISCOVERY_TIMEOUT_MS], retry it once; if the retry also
+     * doesn't complete in time, give up and disconnect so the caller's own reconnect logic (or the
+     * user) can try again from a clean state instead of hanging silently.
+     */
+    private fun startDiscoveryWatchdog(gattRef: BluetoothGatt) {
+        discoveryWatchdog?.cancel()
+        discoveryWatchdog = scope.launch {
+            delay(SERVICE_DISCOVERY_TIMEOUT_MS)
+            if (_connectionState.value != ConnectionState.DISCOVERING_GATT) return@launch
+            log("服務探索逾時，重試一次")
+            try {
+                gattRef.discoverServices()
+            } catch (e: SecurityException) {
+                log("探索服務權限不足：${e.message}")
+                _connectionState.value = ConnectionState.ERROR
+                return@launch
+            }
+            delay(SERVICE_DISCOVERY_TIMEOUT_MS)
+            if (_connectionState.value == ConnectionState.DISCOVERING_GATT) {
+                log("服務探索重試後仍逾時，中斷連線")
+                disconnect()
+            }
+        }
     }
 
     override suspend fun write(bytes: ByteArray): Result<Unit> {
@@ -191,12 +235,15 @@ class BleObdManager(private val context: Context) : BleObdClient, ObdTransport {
                     log("GATT 已連線，開始探索服務")
                     try {
                         g.discoverServices()
+                        startDiscoveryWatchdog(g)
                     } catch (e: SecurityException) {
                         log("探索服務權限不足：${e.message}")
                         _connectionState.value = ConnectionState.ERROR
                     }
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
+                    discoveryWatchdog?.cancel()
+                    discoveryWatchdog = null
                     val wasReady = _connectionState.value == ConnectionState.READY ||
                         _connectionState.value == ConnectionState.INITIALIZING
                     log("GATT 已斷線（status=$status）")
@@ -213,6 +260,8 @@ class BleObdManager(private val context: Context) : BleObdClient, ObdTransport {
         }
 
         override fun onServicesDiscovered(g: BluetoothGatt, status: Int) {
+            discoveryWatchdog?.cancel()
+            discoveryWatchdog = null
             val candidates = mutableListOf<GattCharacteristicCandidate>()
             val lookup = mutableMapOf<Pair<String, String>, BluetoothGattCharacteristic>()
             for (service in g.services) {
@@ -312,5 +361,6 @@ class BleObdManager(private val context: Context) : BleObdClient, ObdTransport {
     companion object {
         private val CLIENT_CHARACTERISTIC_CONFIG_UUID: UUID =
             UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
+        private const val SERVICE_DISCOVERY_TIMEOUT_MS = 5_000L
     }
 }

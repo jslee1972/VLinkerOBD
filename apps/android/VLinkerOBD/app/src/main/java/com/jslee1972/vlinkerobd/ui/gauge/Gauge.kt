@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -141,12 +142,22 @@ fun Gauge(
             }
         }
 
-        trendContent?.invoke()
+        // The dial's arc doesn't sweep the full circle (see START_ANGLE_DEGREES/SWEEP_ANGLE_DEGREES
+        // above) — it leaves an empty wedge at the bottom of the square Box above. Pulling the
+        // trend line and label up into that dead space with a negative offset avoids reserving a
+        // second, redundant gap below the visibly-unused part of the dial.
+        Column(
+            modifier = Modifier.offset(y = (-18).dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            trendContent?.invoke()
 
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }

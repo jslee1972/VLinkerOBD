@@ -282,3 +282,11 @@ Citroën/Peugeot 目前已連續四輪查證（`autowp/psa-can` 不存在、OVMS
 **誠實揭露涵蓋範圍**：這是「相對完整」，不是「窮舉」——沒有任何單一免費公開來源涵蓋所有曾經核發過的 WMI（SAE 是美洲的官方註冊機構，其他國家各自有自己的核發單位，這份清冊本身也是別人整理自各種二手來源），~700 筆已經涵蓋消費用 OBD-II App 實務上絕大多數會遇到的車，包含這次的導火線 `VR7`，但真的很冷門或剛核發的 WMI 還是可能查不到。`detectBrand()` 回傳 `null` 的意思是「這份資料庫今天沒收錄」，不是「這不是真車」——這點寫進了 `shared/wmi-database/README.md`，往後再遇到類似 `VR7` 的個案，做法一樣：補進去、附來源、記錄在這裡。
 
 架構上把 `VehicleBrandDetector` 從寫死的 `object` 改成吃 `Map<String, String>` 的 `class`，比照 `PidGroupRepository` 的模式從 JSON asset 載入（`VehicleBrandDetector.loadFromJson()`），另外保留一個 `VehicleBrandDetector.FALLBACK`（就是原本那張小表，含 `VR7`）當作沒載入完整資料庫時的預設值——單元測試與 `DashboardViewModel` 的預設參數都用這個，production 則在 `VLinkerObdApplication` 明確載入完整的 `wmi-database/wmi-to-brand.json`。順帶支援了來源表裡本來就有的 2 碼萬用碼（例如 `"JT"`→Toyota，代表沒有被特定 3 碼細分的車廠家族碼）：查詢時先比對完整 3 碼，找不到才退而比對前 2 碼。補上 `VehicleBrandDetectorTest` 的 JSON 載入與 2 碼 fallback 測試，`testDebugUnitTest`／`assembleDebug` 全部通過。
+
+### 2026-09-08（第二十輪：VR7 修好後實測——`citroen.json` 的渦輪相關 PID 在這台車上確認不可用，另修一個 BLE 服務探索卡死的 bug）
+
+VR7 修好、廠牌成功辨識成 Citroen 後，第一次連上真的開始輪詢 `citroen.json` 的私有 PID，log 顯示 `turboPressureBar`／`turboPressureSetpointBar`／`turboTempC` 三個都回 `7F 22 31`（分類成「請求超出範圍」，NRC `31`）。
+
+**這不是 bug，是 ECU 誠實的回應**：NRC `0x31`（requestOutOfRange）是 UDS 標準定義的「服務本身合法、但這個識別碼在這台 ECU 上不存在/不支援」，跟 `NO DATA`（逾時無回應）是不同層級的失敗——能收到明確的 `7F` 拒絕，代表 header `6A8`/`688` 確實連到一顆真的會處理 Mode 22 請求的 ECU，只是這三個 DID（`22D47E`/`22D48D`/`22D47F`）在這台車的引擎 ECU 軟體版本上沒有實作。`citroen.json` 的這批 PID 原本就是從單一一台 2016 Citroën DS4（EP6FDTX 引擎）逆向出來的（見 README／JSON 內 `notes`），本來就註記「同引擎/BSI 世代的其他廠徽車型很可能適用，但未逐一實測」——現在有了這台 VR7 Berlingo 的實測反例，證實**不是所有 PSA 車輛都共用同一組渦輪感測器 DID**，符合預期的不確定性，不需要改程式碼；既有的永久放棄機制（第十八輪）已經會在連續失敗 5 次後自動停止查詢這三個欄位。
+
+同一輪也修了一個真的 bug：使用者回報「APP 第一次啟動、自動連上曾配對過的裝置後，會卡在『探索服務中』不動，要強制關閉 APP 重開才會恢復」。查 `BleObdManager.kt` 的 `onConnectionStateChange`，發現 GATT 連線成功後呼叫 `discoverServices()`，但**完全沒有處理逾時或失敗**——Android 的 BLE 堆疊已知會偶爾在呼叫 `discoverServices()` 之後永遠不觸發 `onServicesDiscovered` 回呼（尤其容易發生在 App 啟動後第一次自動重連，之後手動重新連線反而正常，這正好對上使用者描述的症狀），導致連線狀態永遠卡在 `DISCOVERING_GATT`，沒有任何錯誤訊息、也沒有重試。修法：新增一個 5 秒逾時的看門狗（`startDiscoveryWatchdog`）——逾時就重試一次 `discoverServices()`，再逾時就直接斷線讓既有的重連邏輯接手，而不是靜默卡死。`BleObdManager` 直接操作 Android BLE 框架類別，沒有對應的純 JVM 單元測試（跟其他同類別檔案一致，只能靠 `BleObdClient` 介面的 fake 測試上層邏輯），這次修正需要實機驗證才能確認解決。
