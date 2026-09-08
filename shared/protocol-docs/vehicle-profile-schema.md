@@ -250,3 +250,23 @@ Citroën/Peugeot 目前已連續四輪查證（`autowp/psa-can` 不存在、OVMS
 第三、四張截圖是「ECU 支援測試」的結果：`0902`（Mode 09 VIN）這次不是乾脆的 NO DATA，而是收到一段看起來像多幀重組回應的原始文字（推測格式類似 `014` 開頭的長度欄位，接著 `0:`/`1:`/`2:` 標號的分幀行），但 App 自己的分類器把它判定成「無法解析的回應」。使用者無法直接複製精確文字（只有照片），為避免憑模糊照片猜確切位元組內容、寫出可能錯誤的修法，先確認了通用的格式規律：ELM/STN 相容轉接器在多幀回應（如 20 bytes 的 VIN）確實會出現「獨立一行的十六進位長度欄位」+「每行前綴 `<n>:` 標示幀序」這種展示方式，屬於已知格式規律，不需要知道 VIN 實際內容就能修對。在 `ObdResponseParser.normalize()` 補上：多行回應的第一行若是單獨、不含空白的 1–4 位十六進位字元（無法跟後面的資料行搞混，因為真正的資料行一定有多個以空白分隔的位元組），視為長度欄位捨棄；每一行開頭若有 `數字:` 前綴，視為分幀序號一併去除。補上 `ObdResponseParserTest.parsesVinFromLengthPrefixedIndexedMultiFrameResponse`，用同樣格式規律、但内容是自建的一致範例（VIN `VF7ABCDEFGH123456`，20 bytes 依 7-byte 一幀切成 3 幀）驗證修好，不依賴精確重現照片裡看不清楚的原始位元組。
 
 兩個修正都跑過 `testDebugUnitTest`／`assembleDebug` 全部通過，`22F190` 兩次仍是 NO DATA，跟第十五輪的 pin 3/8／EOBD-vs-UDS 結論不衝突（`22F190` 走的是 pin 6/14 那條合法規匯流排，這個限制跟 header 切換 bug、VIN 多幀解析 bug 都無關）。
+
+### 2026-09-08（第十七輪：修好解析器後實測，VIN 真的讀到了但廠牌辨識不出來——`VehicleBrandDetector` 缺一個 WMI）
+
+部署上一輪的兩個修正後重測，log 顯示 `車款辨識：VIN=VR7ECYHZRNJ613202，無法辨識廠牌`——第十六輪的多幀解析修正確實生效（VIN 完整讀出來了），但 `VehicleBrandDetector` 的 WMI 對照表只收錄了 Citroën 的 `VF7`／`VS7`，沒有這台車 VIN 開頭的 `VR7`。
+
+用兩個獨立、真實存在的開源 VIN 解碼專案交叉驗證（不只查一個來源）：
+- [idlesign/vininfo](https://github.com/idlesign/vininfo)（Python VIN 解碼套件，`src/vininfo/dicts/wmi.py`）：`'VR7': 'Citroën'`
+- [way-platform/vin-go](https://github.com/way-platform/vin-go)（Go VIN 解碼專案，有專門處理 Stellantis 集團 VIN 的模組）：`internal/oem/stellantisvin/infer.go` 裡明確寫 `case "VF7", "VR7": // Citroën (France / Spain)`——特別註記 `VR7` 是**西班牙廠**（PSA Vigo 廠）生產的 Citroën，`VF7` 才是法國廠。
+
+兩個獨立來源一致，可信度足夠。已在 `VehicleBrandDetector.kt` 的 Citroën WMI 清單加入 `VR7`，補上 `VehicleBrandDetectorTest.detectsCitroenFromSpainPlantWmi`（直接用這台車實測讀到的 VIN 當測試案例）。`testDebugUnitTest`／`assembleDebug` 全部通過。這台車生產地是西班牙 Vigo 廠，也剛好呼應第十五輪查到的「AEE2010 平台、PSA 集團共用引擎/車身電腦世代」的推論——不同廠區生產同一個平台的車，VIN 開頭碼不同是正常的。
+
+### 2026-09-08（第十八輪：使用者要求「若不支援就不要去查詢了」——把逾時 PID 的退避機制從「偶爾重試」改成「永久放棄」）
+
+`timingAdvanceDegrees` 在現場測試中持續 `NO DATA`（這台車本來就不支援），但 `restartStandardPolling()`／`restartBrandPolling()` 原本的退避機制只是「連續失敗 5 次後，改成每 20 輪才重試一次」（`COOLDOWN_ROUNDS`），不是永久停止，所以還是會在 log 裡偶爾看到重複的失敗訊息。使用者要求：確認不支援後就完全不要再查。
+
+改法：拿掉 `round % COOLDOWN_ROUNDS != 0` 這個「偶爾重試」的例外，`failureStreak[pid.field] >= GIVE_UP_THRESHOLD` 之後永久跳過該 PID（直到下次重新連線，因為 `failureStreak` 是連線時建立的區域變數）。連帶移除已無用的 `COOLDOWN_ROUNDS` 常數與 `round` 計數器。
+
+**這裡踩到一個差點引入的真 bug**：把「略過」跟「跳過本次 delay」寫在一起的話，如果一個輪詢清單裡**所有** PID 都放棄了（例如這台車的 `citroen.json`+`citroen-ev.json` 私有 PID，因為 pin 3/8 硬體限制幾乎全部查不到——見第十五輪），`for` 迴圈會整輪都直接 `continue`、完全不會執行到任何 `delay(...)`，導致這個 coroutine 變成沒有任何暫停點的無限忙迴圈（busy-loop），在真實裝置上會讓一個 CPU 核心被卡滿、電量狂掉。修法是讓「放棄」分支也照樣 `delay(BRAND_POLL_INTERVAL_MS)` 再 `continue`，確保不管有幾個 PID 放棄，每一輪一定會經過至少一次暫停點。
+
+補上 `DashboardViewModelTest.stopsPollingStandardExtraPidPermanentlyAfterRepeatedFailures`：先驅動到某個標準延伸 PID 連續失敗 5 次放棄，再快轉 200 秒虛擬時間，斷言完全沒有再送出該 PID 的指令——如果 busy-loop 的修法沒做對，這個快轉呼叫會直接卡死不返回，而不是斷言失敗，等於順便驗證了不會卡死。`testDebugUnitTest`／`assembleDebug` 全部通過。

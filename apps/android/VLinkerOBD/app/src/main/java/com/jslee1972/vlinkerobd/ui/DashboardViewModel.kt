@@ -341,14 +341,19 @@ class DashboardViewModel(
 
         val failureStreak = mutableMapOf<String, Int>()
         brandPollingJob = scope.launch {
-            var round = 0
             while (isActive) {
-                round++
                 for (pid in pids) {
                     // A vehicle that never answers a PID (protocol doesn't support it, wrong ECU,
                     // etc.) shouldn't keep getting asked every single cycle forever — that's pure
-                    // wasted bandwidth and log noise. Back off to an occasional retry instead.
-                    if ((failureStreak[pid.field] ?: 0) >= GIVE_UP_THRESHOLD && round % COOLDOWN_ROUNDS != 0) continue
+                    // wasted bandwidth and log noise for something that won't change mid-drive.
+                    // Once it's failed enough times in a row to call it unsupported, stop asking
+                    // for the rest of this connection. Still delay before the next PID — if every
+                    // PID in the list has given up, skipping the delay too would busy-loop this
+                    // coroutine with no suspension point at all.
+                    if ((failureStreak[pid.field] ?: 0) >= GIVE_UP_THRESHOLD) {
+                        delay(BRAND_POLL_INTERVAL_MS)
+                        continue
+                    }
 
                     while (fastLoopPaused) delay(POLL_INTERVAL_MS)
                     fastLoopPaused = true
@@ -384,11 +389,15 @@ class DashboardViewModel(
         if (standardExtraPids.isEmpty()) return
         val failureStreak = mutableMapOf<String, Int>()
         standardPollingJob = scope.launch {
-            var round = 0
             while (isActive) {
-                round++
                 for (pid in standardExtraPids) {
-                    if ((failureStreak[pid.field] ?: 0) >= GIVE_UP_THRESHOLD && round % COOLDOWN_ROUNDS != 0) continue
+                    // See restartBrandPolling(): once a PID has failed enough times in a row,
+                    // stop asking for the rest of this connection instead of retrying forever —
+                    // but still delay so an all-given-up list can't busy-loop this coroutine.
+                    if ((failureStreak[pid.field] ?: 0) >= GIVE_UP_THRESHOLD) {
+                        delay(BRAND_POLL_INTERVAL_MS)
+                        continue
+                    }
 
                     while (fastLoopPaused) delay(POLL_INTERVAL_MS)
                     fastLoopPaused = true
@@ -459,10 +468,9 @@ class DashboardViewModel(
         private const val STALE_THRESHOLD = 5
         private val STANDARD_EXTRA_FIELDS = listOf("controlModuleVoltage", "coolantTempC", "timingAdvanceDegrees")
         private const val HISTORY_SIZE = 60
-        // A PID this vehicle never answers after this many consecutive tries stops being polled
-        // every round; it's retried once every COOLDOWN_ROUNDS rounds instead of forever wasting
-        // bandwidth (and flooding the log) on something the ECU has already shown it won't answer.
+        // A PID this vehicle never answers after this many consecutive tries is permanently
+        // skipped for the rest of the connection — a vehicle's PID support doesn't change
+        // mid-drive, so retrying is pure wasted bandwidth and log noise.
         private const val GIVE_UP_THRESHOLD = 5
-        private const val COOLDOWN_ROUNDS = 20
     }
 }

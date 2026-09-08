@@ -386,6 +386,59 @@ class DashboardViewModelTest {
     }
 
     @Test
+    fun stopsPollingStandardExtraPidPermanentlyAfterRepeatedFailures() = runTest(dispatcher) {
+        val client = FakeBleObdClient()
+        val profileWithCoolant = universalProfile.copy(
+            pids = universalProfile.pids + PidDefinition(request = "0105", field = "coolantTempC", unit = "degC", formula = "A-40"),
+        )
+        DashboardViewModel(client, profileWithCoolant, externalScope = backgroundScope)
+
+        client.completeInitAndSkipVin() // leaves an in-flight rpm poll
+
+        // Drives the queue generically — the fast loop's rpm/speed polls interleave with the
+        // coolant ticker in an order this test doesn't need to predict — answering whatever the
+        // *newest* pending write is, and advancing time in small steps (well under any single
+        // command's timeout) whenever nothing new has appeared yet, to let a queued `delay(...)`
+        // elapse. Tracking the last-answered write avoids double-counting a response against a
+        // write that hasn't actually changed since the previous step.
+        var lastAnswered = ""
+        suspend fun driveUntil(condition: () -> Boolean) {
+            var guard = 0
+            while (!condition()) {
+                check(++guard < 2_000) { "drive loop did not converge" }
+                runCurrent()
+                val pending = client.writes.lastOrNull() ?: ""
+                if (pending == lastAnswered) {
+                    dispatcher.scheduler.advanceTimeBy(50)
+                    continue
+                }
+                lastAnswered = pending
+                when (pending) {
+                    "0105\r" -> client.respond("NO DATA\r>")
+                    "010C\r" -> client.respond("41 0C 00 00\r>")
+                    "010D\r" -> client.respond("41 0D 00\r>")
+                }
+                runCurrent()
+            }
+        }
+
+        driveUntil { client.writes.count { it == "0105\r" } >= 5 }
+        val coolantWritesSoFar = client.writes.count { it == "0105\r" }
+        assertEquals(5, coolantWritesSoFar)
+
+        // It should now be permanently skipped. Fast-forwarding well past many more ticker cycles
+        // — without answering anything, so the fast loop's own rpm/speed polls just time out and
+        // retry on their own — must produce no further "0105" writes. Just as importantly, this
+        // must not hang: if the give-up branch ever forgot to delay, an all-given-up PID list
+        // would busy-loop this coroutine with no suspension point, and this call would never
+        // return instead of the test passing.
+        dispatcher.scheduler.advanceTimeBy(200_000)
+        runCurrent()
+
+        assertEquals(coolantWritesSoFar, client.writes.count { it == "0105\r" })
+    }
+
+    @Test
     fun restoresStandardFunctionalHeaderAfterBrandPidWithEcuHeader() = runTest(dispatcher) {
         val client = FakeBleObdClient()
         val citroenProfile = VehicleProfile(
