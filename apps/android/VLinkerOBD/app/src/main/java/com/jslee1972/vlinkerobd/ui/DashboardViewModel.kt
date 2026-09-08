@@ -356,7 +356,14 @@ class DashboardViewModel(
                     pid.ecuReceiveFilter?.let { queue.execute(ObdCommand("ATCRA$it", ObdCommandKind.AT)) }
                     val value = pollOnce(pid)
                     if (pid.ecuReceiveFilter != null) queue.execute(ObdCommand("ATCRA", ObdCommandKind.AT))
-                    if (pid.ecuHeader != null) queue.execute(ObdCommand("ATSH00", ObdCommandKind.AT))
+                    // Restore the standard 11-bit functional broadcast header (7DF), not "00" — a
+                    // 2-digit header is malformed (ELM327 expects 3 hex digits for an 11-bit ID),
+                    // so a real adapter can silently reject/ignore it and leave the header stuck on
+                    // this PID's custom value. Every following standard PID poll then gets sent to
+                    // whichever ECU that header pointed at, which has no reason to answer Mode 01
+                    // and can legitimately refuse with a negative response (e.g. NRC 0x22) instead
+                    // of the timeout/NO DATA a wrong-but-unaddressed header would produce.
+                    if (pid.ecuHeader != null) queue.execute(ObdCommand("ATSH7DF", ObdCommandKind.AT))
                     fastLoopPaused = false
                     if (value != null) {
                         failureStreak[pid.field] = 0

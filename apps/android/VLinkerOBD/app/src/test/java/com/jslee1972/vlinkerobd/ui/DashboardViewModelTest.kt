@@ -386,6 +386,49 @@ class DashboardViewModelTest {
     }
 
     @Test
+    fun restoresStandardFunctionalHeaderAfterBrandPidWithEcuHeader() = runTest(dispatcher) {
+        val client = FakeBleObdClient()
+        val citroenProfile = VehicleProfile(
+            profileId = "citroen",
+            brand = "Citroen",
+            pids = listOf(
+                PidDefinition(request = "22D47E", field = "turboPressureBar", unit = "bar", ecuHeader = "6A8", formula = "A"),
+            ),
+        )
+        val viewModel = DashboardViewModel(
+            client,
+            universalProfile,
+            mapOf("Citroen" to citroenProfile),
+            externalScope = backgroundScope,
+        )
+
+        client.setReady()
+        runCurrent()
+        repeat(8) { client.respondToNextWrite(">") } // cascades into the "0902" VIN request
+        assertEquals("0902\r", client.writes.last())
+
+        client.respondToNextWrite("49 02 01 56 46 37 41 42 43 44 45 46 47 48 31 32 33 34 35 36\r>") // VIN VF7ABCDEFGH123456
+        assertEquals("Citroen", viewModel.uiState.value.detectedBrand)
+
+        client.respondToNextWrite("43 00\r>") // automatic DTC read, no codes -> cascades into the fast loop's rpm poll
+        assertEquals("010C\r", client.writes.last())
+
+        // Completing the rpm poll hands the queue to the brand poller, which switches to the
+        // turbo PID's ECU header before asking for it.
+        client.respondToNextWrite("41 0C 00 00\r>")
+        assertEquals("ATSH6A8\r", client.writes.last())
+
+        client.respondToNextWrite(">")
+        assertEquals("22D47E\r", client.writes.last())
+
+        // After reading the PID, the header must be restored to the standard 11-bit functional
+        // broadcast (7DF) — a malformed "ATSH00" can be silently ignored by the adapter, stranding
+        // every later standard PID poll on this PID's ECU header (see DashboardViewModel).
+        client.respondToNextWrite("62 D4 7E 64\r>")
+        assertEquals("ATSH7DF\r", client.writes.last())
+    }
+
+    @Test
     fun autoConnectsToRememberedDeviceWhenSeenInScanResults() = runTest(dispatcher) {
         val client = FakeBleObdClient()
         val memory = FakeDeviceMemory(address = "AA:BB:CC:DD:EE:FF")

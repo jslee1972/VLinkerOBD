@@ -112,6 +112,16 @@ class ObdResponseParserTest {
     }
 
     @Test
+    fun parsesVinFromLengthPrefixedIndexedMultiFrameResponse() {
+        // Some adapters show a genuinely multi-frame reply (too long for one 8-byte CAN frame,
+        // e.g. VIN's 20 bytes) as a standalone total-length line ("014" = 0x14 = 20 decimal)
+        // followed by one line per frame, each prefixed with "<n>:" to mark frame order — instead
+        // of the single reassembled line the other tests exercise. VIN = "VF7ABCDEFGH123456".
+        val raw = "014\r0:49 02 01 56 46 37 41\r1:42 43 44 45 46 47 48\r2:31 32 33 34 35 36\r>"
+        assertEquals("VF7ABCDEFGH123456", ObdResponseParser.parseVin(raw))
+    }
+
+    @Test
     fun parseVinReturnsNullOnNoData() {
         assertNull(ObdResponseParser.parseVin("NO DATA\r>"))
     }

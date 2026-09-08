@@ -25,18 +25,35 @@ object ObdResponseParser {
         "78" to "處理中，請稍候",
     )
 
-    /** Uppercases, strips echo/prompt/"SEARCHING" noise, and collapses whitespace to single spaces. */
+    /**
+     * Uppercases, strips echo/prompt/"SEARCHING" noise, and collapses whitespace to single spaces.
+     *
+     * Also unwraps two ELM/STN multi-frame display quirks seen on real vehicles with responses too
+     * long for one CAN frame (e.g. a 20-byte Mode 09 VIN reply): a standalone total-length byte on
+     * its own line ahead of the data (e.g. "014" before a 20-byte payload), and a "<n>:" index
+     * prefix on each following line disambiguating frame/source order (e.g. "0:49 02 01 56 46 37
+     * 41"). Both are stripped line-by-line, before the usual whitespace flattening, so the marker
+     * search in [payloadBytes] sees one clean, contiguous byte stream either way.
+     */
     fun normalize(raw: String): String {
-        return raw
+        val cleaned = raw
             .uppercase()
-            .replace("\r", " ")
-            .replace("\n", " ")
-            .replace(">", " ")
-            .replace("SEARCHING...", " ")
-            .replace("SEARCHING", " ")
-            .split(Regex("\\s+"))
-            .filter { it.isNotEmpty() }
-            .joinToString(" ")
+            .replace(">", "")
+            .replace("SEARCHING...", "")
+            .replace("SEARCHING", "")
+
+        val lines = cleaned.split("\r", "\n").map { it.trim() }.filter { it.isNotEmpty() }
+        val tokens = mutableListOf<String>()
+        lines.forEachIndexed { index, line ->
+            // A bare hex token alone on the first line of a multi-line response is a length
+            // header, not data — real data lines always carry multiple whitespace-separated bytes.
+            if (index == 0 && lines.size > 1 && line.matches(Regex("[0-9A-F]{1,4}"))) {
+                return@forEachIndexed
+            }
+            val withoutFrameIndex = line.replace(Regex("^\\d{1,2}:"), "")
+            tokens += withoutFrameIndex.split(Regex("\\s+")).filter { it.isNotEmpty() }
+        }
+        return tokens.joinToString(" ")
     }
 
     fun classify(raw: String): ObdResponseStatus {

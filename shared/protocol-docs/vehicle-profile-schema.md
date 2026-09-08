@@ -227,3 +227,26 @@ Citroën/Peugeot 目前已連續四輪查證（`autowp/psa-can` 不存在、OVMS
 新增 `shared/vehicle-profiles/citroen-ev.json`（`brand: "Citroen"`，`verified: "community"`），在 `VLinkerObdApplication.kt` 跟既有的 `citroen.json`（燃油 DS4 profile）合併成同一個 `psaProfile`（`pids` 陣列相加），不另外做 EV/ICE 車型切換 UI——理由是本專案既有的失敗退避機制（`GIVE_UP_THRESHOLD`/`COOLDOWN_ROUNDS`）本來就會讓車輛答不出來的 PID 自動降頻，燃油車遇到這些 EV-only DID 會全部 NO DATA 然後自動退避，跟其他查不到的 PID 一視同仁，不需要多一層車型選擇的複雜度。
 
 **ECU 支援測試工具**：在右上角選單新增「ECU 支援測試」，對應 `DashboardViewModel.testEcuSupport()` — 依序送出 `0100`（確認標準匯流排本身有無回應）、`0902`（Mode 09 VIN）、`22F190`（UDS 讀 VIN），並將結果分類成「有回應／NO DATA／拒絕(7F)／逾時／無法解析」五種狀態顯示給使用者；若 `22F190` 被拒絕或無回應，會自動追加送 `1003`（切換至延伸診斷 Session）後重試一次，最後用 `1001` 還原預設 Session。這是純讀取型的診斷探測（沒有寫入/清除任何 ECU 狀態的指令），用來幫使用者快速判斷「這台車到底是協定/服務不支援，還是接線問題」，呼應第十三輪的結論。已補上 `DashboardViewModelTest` 的兩個情境（直接成功、被拒絕後靠 1003 重試成功）並跑過 `testDebugUnitTest`/`assembleDebug` 全部通過。
+
+### 2026-09-08（第十五輪：使用者貼上 [ludwig-v/arduino-psa-diag](https://github.com/ludwig-v/arduino-psa-diag) 與 [prototux/PSA-RE](https://github.com/prototux/PSA-RE)——證實 pin 3/8 硬體限制確有其事）
+
+`ludwig-v/arduino-psa-diag`：真實存在、活躍維護（222 星、近期仍有更新），是拿 Arduino 直接送 UDS/KWP 診斷封包給 PSA 車的工具，README 有明確的 Dump Mode 接線圖：
+
+| 平台 | 診斷 CAN 接腳 |
+| - | - |
+| **AEE2004 / AEE2010** | **Pin 3（CAN-H）／Pin 8（CAN-L）** |
+| NEA2020（2020 年後新平台，改用 DoIP） | Pin 6／Pin 14 |
+
+這**直接證實**第十三輪懸而未決的法國論壇說法：PSA 較舊平台（AEE2004/AEE2010）的診斷用 CAN bus 真的不在標準 OBD-II pin 6/14 上，而是 pin 3/8——不是二手轉述、是另一個獨立、活躍、有實際程式碼佐證的來源。
+
+`prototux/PSA-RE`（第四輪已查證為真實但作者已停止維護，只有被動監聽的車身網路資料，未涵蓋診斷層），這次額外抽查 `architectures.yml`：確認 `AEE2004`/`AEE2010` 平台字面定義為「Full-CAN」架構，明確分成 `HS`（500kbps，主要 ECU 掛在這條，`protocols` 欄位列出 `EOBD` 與 `UDS` 兩者並存）與 `LS`（125kbps，車身/娛樂系統用）兩條實體匯流排；`AEE2010` = 2010～2020 年左右生產的車輛。這解釋了為什麼同一顆引擎 ECU 可以「pin 6/14 能查到標準 Mode 01 PID（EOBD 子集），但 pin 3/8 才是完整 UDS 存取」——兩種診斷指令集可能同時存在於同一條實體 HS 匯流排上，只是 PSA 刻意把兩種存取管道接到 OBD-II 接頭上不同的針腳，讓一般通用掃描工具（含 vLinker）只能碰到閹割過的 EOBD 子集。
+
+**結論更新**：使用者的燃油版 Berlingo（先前已由 VIN/Mode 09 讀取失敗等症狀推斷是較舊世代）很可能就是 AEE2004 或 AEE2010 平台，這代表**深度私有 PID 資料確實需要接到 pin 3/8 才拿得到，vLinker 這類通用轉接器的收發器沒有接到那兩根針腳，是真正的硬體限制，軟體層無法繞過**——呼應並強化第十三輪「若真是接腳問題，軟體無法解決」的結論，不再只是推測。務實可行的路只剩：換一條有額外接到 pin 3/8 的診斷線材/轉接器（如 arduino-psa-diag 展示的 OBD2 延長線分接法），這是硬體採購問題，超出本 App 能處理的範圍；而 `22F190`／`0100` 等標準指令因為走的是 pin 6/14 那條合法規 EOBD 匯流排，跟這個限制無關，仍值得實測。
+
+### 2026-09-08（第十六輪：使用者用「ECU 支援測試」實車連線截圖回報，帶出兩個真的程式碼 bug——不是資料查證，是工程排查）
+
+第一張截圖顯示大量 `speedKPH：條件不符`／`rpm：條件不符`／`controlModuleVoltage：條件不符`／`coolantTempC：條件不符` 洪水式出現，最後 `已中斷連線`。追查 `DashboardViewModel.restartBrandPolling()` 發現：查完一個有 `ecuHeader` 的廠牌 PID 後，程式碼原本用 `ATSH00` 想切回預設 header——但這是格式錯誤的指令（ELM327 header 要 3 位十六進位如 `7DF`，`ATSH00` 只有 2 位），轉接器很可能直接忽略它，導致 header 卡在上一顆廠牌 PID 的值（例如 `citroen.json` 渦輪壓力用的 `6A8`），後續每一輪標準 Mode 01 輪詢都送到這個錯誤的 header，對應的 ECU 自然回覆 `7F ... 22`（條件不符）——完全符合截圖的洪水症狀，且不會自己恢復。已改成正確的 `ATSH7DF`（標準 11-bit 功能性廣播位址），並補上 `DashboardViewModelTest.restoresStandardFunctionalHeaderAfterBrandPidWithEcuHeader` 重現整個情境（VIN 成功辨識出 Citroën → 觸發廠牌輪詢 → 查完 PID 後驗證下一個指令是 `ATSH7DF` 而非 `ATSH00`）。這個路徑先前完全沒有測試覆蓋，也是這次現場測試中第一次真的被觸發到（先前每一輪 VIN 都直接 NO DATA，從未真正進入過廠牌輪詢的 header 切換邏輯）。
+
+第三、四張截圖是「ECU 支援測試」的結果：`0902`（Mode 09 VIN）這次不是乾脆的 NO DATA，而是收到一段看起來像多幀重組回應的原始文字（推測格式類似 `014` 開頭的長度欄位，接著 `0:`/`1:`/`2:` 標號的分幀行），但 App 自己的分類器把它判定成「無法解析的回應」。使用者無法直接複製精確文字（只有照片），為避免憑模糊照片猜確切位元組內容、寫出可能錯誤的修法，先確認了通用的格式規律：ELM/STN 相容轉接器在多幀回應（如 20 bytes 的 VIN）確實會出現「獨立一行的十六進位長度欄位」+「每行前綴 `<n>:` 標示幀序」這種展示方式，屬於已知格式規律，不需要知道 VIN 實際內容就能修對。在 `ObdResponseParser.normalize()` 補上：多行回應的第一行若是單獨、不含空白的 1–4 位十六進位字元（無法跟後面的資料行搞混，因為真正的資料行一定有多個以空白分隔的位元組），視為長度欄位捨棄；每一行開頭若有 `數字:` 前綴，視為分幀序號一併去除。補上 `ObdResponseParserTest.parsesVinFromLengthPrefixedIndexedMultiFrameResponse`，用同樣格式規律、但内容是自建的一致範例（VIN `VF7ABCDEFGH123456`，20 bytes 依 7-byte 一幀切成 3 幀）驗證修好，不依賴精確重現照片裡看不清楚的原始位元組。
+
+兩個修正都跑過 `testDebugUnitTest`／`assembleDebug` 全部通過，`22F190` 兩次仍是 NO DATA，跟第十五輪的 pin 3/8／EOBD-vs-UDS 結論不衝突（`22F190` 走的是 pin 6/14 那條合法規匯流排，這個限制跟 header 切換 bug、VIN 多幀解析 bug 都無關）。
