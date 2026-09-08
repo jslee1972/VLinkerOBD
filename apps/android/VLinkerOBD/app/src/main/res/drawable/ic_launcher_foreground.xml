@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Speedometer dial (matches ui/gauge/Gauge.kt's own arc/tick/needle look) with a two-tone
+  compass-style needle: today it reads as "live OBD gauge", but the same dart-and-tail needle
+  shape is also the universal "direction/heading" glyph, so it keeps making sense once
+  navigation, speed-camera alerts, and other driving-info features (per ROADMAP.md) are added
+  alongside the dashboard rather than needing a re-brand.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- dial track -->
+    <path
+        android:pathData="M22.82,72 A36,36 0 1 1 85.18,72"
+        android:strokeColor="#2A303C"
+        android:strokeWidth="6"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
+    <!-- filled portion up to the needle, echoing the live-reading arc in the in-app gauge -->
+    <path
+        android:pathData="M22.82,72 A36,36 0 0 1 72,22.82"
+        android:strokeColor="#22D3EE"
+        android:strokeAlpha="0.9"
+        android:strokeWidth="6"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
+    <!-- tick marks -->
+    <path
+        android:pathData="M31.48,67 L27.15,69.5 M29.27,45.97 L24.52,44.42 M43.42,30.24 L41.38,25.67 M64.58,30.24 L66.62,25.67 M78.73,45.97 L83.48,44.42 M76.52,67 L80.85,69.5"
+        android:strokeColor="#8B93A3"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
+    <!-- needle tail (dim half) -->
+    <path
+        android:fillColor="#0E7490"
+        android:pathData="M54,54 L56.6,55.5 L49,62.7 L51.4,52.5 Z" />
+
+    <!-- needle tip (bright half) -->
+    <path
+        android:fillColor="#22D3EE"
+        android:pathData="M68,29.8 L56.6,55.5 L54,54 L51.4,52.5 Z" />
+
+    <!-- pivot -->
+    <path
+        android:fillColor="#E7ECF3"
+        android:pathData="M54,54 m-3.5,0 a3.5,3.5 0 1,0 7,0 a3.5,3.5 0 1,0 -7,0" />
+</vector>
