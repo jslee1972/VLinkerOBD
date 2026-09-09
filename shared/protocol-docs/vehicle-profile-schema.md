@@ -51,6 +51,20 @@ Android 端由 `BitFieldExtractor`（`apps/android/VLinkerOBD/app/src/main/java/
 
 - `fastPoll`（選填，布林值，預設 `false`）：標記這個廠牌 PID 變化速度快（例如檔位、油門開度這類會隨駕駛動作即時變動的數值），需要比同一份 profile 裡其他 PID 更頻繁查詢。同一輪詢清單裡的所有 PID 原本共用同一個輪詢間隔，PID 數量一多（例如 `citroen.json` 有近 20 個），變化快的欄位反而要等一整輪跑完才會再問一次，可能長達一分鐘。標記 `fastPoll: true` 的 PID 會另外跑一個獨立、間隔短很多的輪詢迴圈（`DashboardViewModel.FAST_BRAND_POLL_INTERVAL_MS`），不受同一份 profile 裡其他慢速 PID 拖累。
 
+## v5 新增欄位：`displayNameZh`／`descriptionZh`／`group`（per-PID）
+
+跨平台的中文顯示名稱、參數說明、分組，原本各自寫死在 Android（`PidDisplayNames.kt`／`ParameterDescriptions.kt`／`ParameterGroups.kt`）與 iOS 對應檔案裡，兩邊要各自維護一份重複的對照表。v5 把這三者搬進 `shared/vehicle-profiles/*.json` 的 PID 定義本身，兩平台改成直接讀 JSON，不再各自寫一份：
+
+- `displayNameZh`（選填）：這個 PID 在 UI 上顯示的簡短中文名稱（例如 `"水溫"`、`"胎壓 1"`）。跟 profile 層級/model 層級既有的 `displayNameZh`（分組/車型標題用）是不同用途，可以同名但語意不同。
+- `descriptionZh`（選填）：較長的中文說明文字，用在「i」說明圖示彈窗，解釋這個數值代表什麼、正常範圍、為什麼值得關注。
+- `group`（選填）：這個 PID 在「即時參數」畫面要歸類到哪一個分組（例如 `"引擎與動力"`、`"溫度"`、`"壓力"`、`"燃油與排放"`、`"電力與診斷"`、`"廠牌專屬"`）。分組**名稱字串**是資料（放在 JSON），但分組的**顯示順序**跟固定的分組常數清單仍然是各平台程式碼自己定義（這是版面配置，不是車輛資料）。目前所有廠牌 profile 的 PID 一律標 `"廠牌專屬"`。
+
+三個欄位都選填，沒有填的 PID 由各平台 fallback：`displayNameZh` 缺省顯示 `field` 原始 camelCase 名稱、`descriptionZh` 缺省顯示「尚無詳細說明。」、`group` 缺省歸類到廠牌專屬分組——延續原本 Android 端「不編造內容，缺資料就誠實顯示 fallback」的規則。
+
+**例外**：行車電腦衍生欄位（`instantFuelConsumption`／`averageFuelConsumption`／`acceleration`／`tripDistance`／`tripDuration`）不是 PID、不出現在任何 `shared/vehicle-profiles/*.json` 裡（它們是輪詢迴圈算出來的衍生值，沒有 `request`/`formula` 可言），這 5 個欄位的中文名稱/說明/分組仍然各自寫死在兩平台程式碼裡（一個小到不需要资料驅動的例外，內容跟遷移前一致）。
+
+`speedKPH`／`rpm` 兩個核心欄位也刻意不填 `displayNameZh`／`descriptionZh`——UI 上用專屬儀表指針呈現，中文標籤（「車速」「轉速」）直接寫在儀表元件裡，不透過這個表。
+
 ## 同廠牌多車型／多指令 header 差異
 
 同一廠牌底下不同車型、甚至同一車型不同 PID，都可能需要不同的 `ecuHeader`（例如 Mazda 胎壓 PID，Miata NC 與 RX-8/MazdaSpeed6 的 header 不同；Ford Fiesta 里程數與胎壓分別要切換到不同 ECU header）。有「多車型」差異時用 `models` 陣列分組，每個 model 有自己的 `modelId`、`displayNameZh`、`ecuHeader`（當作底下 PID 沒指定時的預設值），底下才是 `pids` 清單：

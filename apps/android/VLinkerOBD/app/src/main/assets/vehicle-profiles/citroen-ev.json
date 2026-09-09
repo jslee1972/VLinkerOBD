@@ -1,19 +1,145 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 5,
   "profileId": "citroen-peugeot-ev-emp2",
   "brand": "Citroen",
   "displayNameZh": "Citroën/Peugeot 純電 EMP2 平台電池管理系統 PID",
   "notes": "來源：OVMS v3（openvehicles/Open-Vehicle-Monitoring-System-3）vehicle_fiatedoblo 模組原始碼（2024–2025，作者 Raphael Mack），已下載 vehicle_fiatedoblo.cpp 逐一比對 IncomingBatteryPoll/IncomingVCUPoll 的解碼邏輯重新推導公式，非轉載自論壇二手資料。模組文件記載相容 Peugeot e-Rifter、Opel Combo-e、Citroën ë-Berlingo、Toyota ProAce City（Stellantis EMP2 純電平台，約 2022 年後車款）。這些全部是電池管理系統（BMS）/車輛控制單元（VCU）專屬資料，燃油版車輛沒有對應資料，預期回應是 NO DATA 或無回應——只有測試車確認是上述純電車款時才會有值。標記 verified: community（OVMS 為多人維護、原始碼公開可查的專案，比單篇論壇貼文可信，但本專案尚未在實車上驗證過這些數值）。原始碼另外列出 0xD8CD（驅動馬達溫度，作者自行註記「只是猜測，待確認」）與 0xD8F9（冷卻液溫度，僅列在輪詢清單、原始碼中沒有對應解碼邏輯）兩項，因缺乏可信解碼依據，未收錄；0xD410（馬達扭矩）原始碼標註為「guessed」，同樣未收錄。",
   "pids": [
-    {"request": "22D815", "field": "evBatteryVoltageV", "unit": "V", "ecuHeader": "6B4", "ecuReceiveFilter": "694", "formula": "((A*256)+B)/16", "verified": "community"},
-    {"request": "22D816", "field": "evBatteryCurrentA", "unit": "A", "ecuHeader": "6B4", "ecuReceiveFilter": "694", "formula": "((B*65536)+(C*256)+D)/64-1200", "verified": "community"},
-    {"request": "22D86F", "field": "evBatteryMinCellVoltageV", "unit": "V", "ecuHeader": "6B4", "ecuReceiveFilter": "694", "formula": "((A*256)+B)/1000", "verified": "community"},
-    {"request": "22D870", "field": "evBatteryMaxCellVoltageV", "unit": "V", "ecuHeader": "6B4", "ecuReceiveFilter": "694", "formula": "((A*256)+B)/1000", "verified": "community"},
-    {"request": "22D865", "field": "evBatteryAvailableKWh", "unit": "kWh", "ecuHeader": "6B4", "ecuReceiveFilter": "694", "formula": "((A*256)+B)/64", "verified": "community"},
-    {"request": "22D860", "field": "evBatterySohPercent", "unit": "%", "ecuHeader": "6B4", "ecuReceiveFilter": "694", "formula": "((A*65536)+(B*256)+C-65536)/16", "verified": "community"},
-    {"request": "22D434", "field": "evAmbientTempC", "unit": "度", "ecuHeader": "6A2", "ecuReceiveFilter": "682", "bitField": {"bitIndex": 0, "bitLength": 8, "signed": true}, "verified": "community"},
-    {"request": "22D8EF", "field": "evBatteryTempC", "unit": "度", "ecuHeader": "6A2", "ecuReceiveFilter": "682", "bitField": {"bitIndex": 0, "bitLength": 8, "signed": true}, "verified": "community"},
-    {"request": "22D8CE", "field": "evDcDcConverterTempC", "unit": "度", "ecuHeader": "6A2", "ecuReceiveFilter": "682", "bitField": {"bitIndex": 8, "bitLength": 8, "signed": true}, "verified": "community"},
-    {"request": "22D8E1", "field": "evOnboardChargerTempC", "unit": "度", "ecuHeader": "6A2", "ecuReceiveFilter": "682", "bitField": {"bitIndex": 8, "bitLength": 8, "signed": true}, "verified": "community"}
+    {
+      "request": "22D815",
+      "field": "evBatteryVoltageV",
+      "unit": "V",
+      "ecuHeader": "6B4",
+      "ecuReceiveFilter": "694",
+      "formula": "((A*256)+B)/16",
+      "verified": "community",
+      "displayNameZh": "高壓電池電壓",
+      "descriptionZh": "純電 PSA 車輛（如 ë-Berlingo）的高壓動力電池組電壓，燃油版車輛不會有這個資料。",
+      "group": "廠牌專屬"
+    },
+    {
+      "request": "22D816",
+      "field": "evBatteryCurrentA",
+      "unit": "A",
+      "ecuHeader": "6B4",
+      "ecuReceiveFilter": "694",
+      "formula": "((B*65536)+(C*256)+D)/64-1200",
+      "verified": "community",
+      "displayNameZh": "高壓電池電流",
+      "descriptionZh": "高壓動力電池組電流，正負號代表充電或放電方向，只適用純電車款。",
+      "group": "廠牌專屬"
+    },
+    {
+      "request": "22D86F",
+      "field": "evBatteryMinCellVoltageV",
+      "unit": "V",
+      "ecuHeader": "6B4",
+      "ecuReceiveFilter": "694",
+      "formula": "((A*256)+B)/1000",
+      "verified": "community",
+      "displayNameZh": "電池最低單體電壓",
+      "descriptionZh": "電池組裡電壓最低的單一電芯電壓，跟最高電芯電壓的差距是判斷電池組是否需要平衡的重要指標。",
+      "group": "廠牌專屬"
+    },
+    {
+      "request": "22D870",
+      "field": "evBatteryMaxCellVoltageV",
+      "unit": "V",
+      "ecuHeader": "6B4",
+      "ecuReceiveFilter": "694",
+      "formula": "((A*256)+B)/1000",
+      "verified": "community",
+      "displayNameZh": "電池最高單體電壓",
+      "descriptionZh": "電池組裡電壓最高的單一電芯電壓。",
+      "group": "廠牌專屬"
+    },
+    {
+      "request": "22D865",
+      "field": "evBatteryAvailableKWh",
+      "unit": "kWh",
+      "ecuHeader": "6B4",
+      "ecuReceiveFilter": "694",
+      "formula": "((A*256)+B)/64",
+      "verified": "community",
+      "displayNameZh": "可用電量",
+      "descriptionZh": "目前電池組可用電量（度數），只適用純電車款。",
+      "group": "廠牌專屬"
+    },
+    {
+      "request": "22D860",
+      "field": "evBatterySohPercent",
+      "unit": "%",
+      "ecuHeader": "6B4",
+      "ecuReceiveFilter": "694",
+      "formula": "((A*65536)+(B*256)+C-65536)/16",
+      "verified": "community",
+      "displayNameZh": "電池健康度 (SOH)",
+      "descriptionZh": "電池健康度（State of Health）百分比，反映電池組相對於全新狀態的容量衰退程度，只適用純電車款。",
+      "group": "廠牌專屬"
+    },
+    {
+      "request": "22D434",
+      "field": "evAmbientTempC",
+      "unit": "度",
+      "ecuHeader": "6A2",
+      "ecuReceiveFilter": "682",
+      "bitField": {
+        "bitIndex": 0,
+        "bitLength": 8,
+        "signed": true
+      },
+      "verified": "community",
+      "displayNameZh": "外部氣溫（EV）",
+      "descriptionZh": "純電車款車輛控制單元（VCU）量到的外部氣溫，跟標準的 ambientAirTempC 來源不同。",
+      "group": "廠牌專屬"
+    },
+    {
+      "request": "22D8EF",
+      "field": "evBatteryTempC",
+      "unit": "度",
+      "ecuHeader": "6A2",
+      "ecuReceiveFilter": "682",
+      "bitField": {
+        "bitIndex": 0,
+        "bitLength": 8,
+        "signed": true
+      },
+      "verified": "community",
+      "displayNameZh": "高壓電池溫度",
+      "descriptionZh": "高壓動力電池組溫度，電池溫度過高或過低都會影響充放電效率與壽命，只適用純電車款。",
+      "group": "廠牌專屬"
+    },
+    {
+      "request": "22D8CE",
+      "field": "evDcDcConverterTempC",
+      "unit": "度",
+      "ecuHeader": "6A2",
+      "ecuReceiveFilter": "682",
+      "bitField": {
+        "bitIndex": 8,
+        "bitLength": 8,
+        "signed": true
+      },
+      "verified": "community",
+      "displayNameZh": "DC-DC 轉換器溫度",
+      "descriptionZh": "高壓轉低壓 DC-DC 轉換器溫度，只適用純電/油電車款。",
+      "group": "廠牌專屬"
+    },
+    {
+      "request": "22D8E1",
+      "field": "evOnboardChargerTempC",
+      "unit": "度",
+      "ecuHeader": "6A2",
+      "ecuReceiveFilter": "682",
+      "bitField": {
+        "bitIndex": 8,
+        "bitLength": 8,
+        "signed": true
+      },
+      "verified": "community",
+      "displayNameZh": "車載充電器溫度",
+      "descriptionZh": "車載充電器（On-Board Charger）溫度，充電時才會有意義的讀數，只適用純電車款。",
+      "group": "廠牌專屬"
+    }
   ]
 }

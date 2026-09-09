@@ -1,52 +1,403 @@
 {
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "profileId": "universal-obd2",
   "displayName": "Universal OBD-II",
   "displayNameZh": "通用 OBD-II",
   "pids": [
-    {"request": "010D", "field": "speedKPH", "unit": "km/h", "formula": "A"},
-    {"request": "010C", "field": "rpm", "unit": "rpm", "formula": "((A*256)+B)/4"},
-    {"request": "0105", "field": "coolantTempC", "unit": "度", "formula": "A-40"},
-    {"request": "0104", "field": "engineLoadPercent", "unit": "%", "formula": "A*100/255"},
-    {"request": "0111", "field": "throttlePercent", "unit": "%", "formula": "A*100/255", "fastPoll": true},
-    {"request": "0142", "field": "controlModuleVoltage", "unit": "V", "formula": "((A*256)+B)/1000"},
-    {"request": "010F", "field": "intakeAirTempC", "unit": "度", "formula": "A-40"},
-    {"request": "0110", "field": "mafGramsPerSec", "unit": "g/s", "formula": "((A*256)+B)/100"},
-    {"request": "010B", "field": "intakeManifoldPressureKPA", "unit": "kPa", "formula": "A", "fastPoll": true},
-    {"request": "010A", "field": "fuelPressureKPA", "unit": "kPa", "formula": "A*3"},
-    {"request": "0133", "field": "barometricPressureKPA", "unit": "kPa", "formula": "A"},
-    {"request": "012F", "field": "fuelLevelPercent", "unit": "%", "formula": "A*100/255"},
-    {"request": "0146", "field": "ambientAirTempC", "unit": "度", "formula": "A-40"},
-    {"request": "015C", "field": "engineOilTempC", "unit": "度", "formula": "A-40"},
-    {"request": "011F", "field": "runtimeSinceStartSec", "unit": "秒", "formula": "(A*256)+B"},
-    {"request": "0106", "field": "shortTermFuelTrimBank1Percent", "unit": "%", "formula": "(A-128)*100/128"},
-    {"request": "0107", "field": "longTermFuelTrimBank1Percent", "unit": "%", "formula": "(A-128)*100/128"},
-    {"request": "0108", "field": "shortTermFuelTrimBank2Percent", "unit": "%", "formula": "(A-128)*100/128"},
-    {"request": "0109", "field": "longTermFuelTrimBank2Percent", "unit": "%", "formula": "(A-128)*100/128"},
-    {"request": "010E", "field": "timingAdvanceDegrees", "unit": "度", "formula": "A/2-64"},
-    {"request": "0121", "field": "distanceWithMilOnKM", "unit": "公里", "formula": "(A*256)+B"},
-    {"request": "0177", "field": "chargeAirCoolerTempC", "unit": "度", "formula": "B-40"},
-    {"request": "0124", "field": "lambdaBank1Sensor1", "unit": "ratio", "formula": "((A*256)+B)*0.0000305"},
-    {"request": "0170", "field": "boostPressureCommandedKPA", "unit": "kPa", "formula": "((B*256)+C)*0.03125"},
-    {"request": "0170", "field": "boostPressureActualKPA", "unit": "kPa", "formula": "((D*256)+E)*0.03125"},
-    {"request": "0173", "field": "exhaustPressureBank1KPA", "unit": "kPa", "formula": "((B*256)+C)*0.01"},
-    {"request": "017A", "field": "dpfInletPressureKPA", "unit": "kPa", "formula": "((D*256)+E)*0.01"},
-    {"request": "017A", "field": "dpfOutletPressureKPA", "unit": "kPa", "formula": "((F*256)+G)*0.01"},
-    {"request": "016D", "field": "fuelRailPressureCommandedKPA", "unit": "kPa", "formula": "((B*256)+C)*10"},
-    {"request": "016D", "field": "fuelRailPressureActualKPA", "unit": "kPa", "formula": "((D*256)+E)*10"},
-    {"request": "015E", "field": "engineFuelRateLPH", "unit": "公升/小時", "formula": "((A*256)+B)*0.05"},
-    {"request": "0178", "field": "exhaustGasTempBank1Sensor1C", "unit": "度", "formula": "(((B*256)+C)*0.1)-40"},
-    {"request": "0178", "field": "exhaustGasTempBank1Sensor2C", "unit": "度", "formula": "(((D*256)+E)*0.1)-40"},
-    {"request": "0178", "field": "exhaustGasTempBank1Sensor3C", "unit": "度", "formula": "(((F*256)+G)*0.1)-40"},
-    {"request": "0183", "field": "noxBank1Sensor1PPM", "unit": "ppm", "formula": "(B*256)+C"},
-    {"request": "0143", "field": "absoluteLoadPercent", "unit": "%", "formula": "((A*256)+B)*100/255"},
-    {"request": "0144", "field": "commandedEquivalenceRatio", "unit": "ratio", "formula": "((A*256)+B)*0.0000305"},
-    {"request": "0145", "field": "relativeThrottlePercent", "unit": "%", "formula": "A*100/255", "fastPoll": true},
-    {"request": "0152", "field": "ethanolFuelPercent", "unit": "%", "formula": "A*100/255"},
-    {"request": "0159", "field": "fuelRailPressureAbsoluteKPA", "unit": "kPa", "formula": "((A*256)+B)*10"},
-    {"request": "015A", "field": "relativeAcceleratorPedalPercent", "unit": "%", "formula": "A*100/255", "fastPoll": true},
-    {"request": "0161", "field": "driverDemandTorquePercent", "unit": "%", "formula": "A-125", "fastPoll": true},
-    {"request": "0162", "field": "actualEngineTorquePercent", "unit": "%", "formula": "A-125", "fastPoll": true},
-    {"request": "0163", "field": "engineReferenceTorqueNM", "unit": "Nm", "formula": "(A*256)+B"}
+    {
+      "request": "010D",
+      "field": "speedKPH",
+      "unit": "km/h",
+      "formula": "A"
+    },
+    {
+      "request": "010C",
+      "field": "rpm",
+      "unit": "rpm",
+      "formula": "((A*256)+B)/4"
+    },
+    {
+      "request": "0105",
+      "field": "coolantTempC",
+      "unit": "度",
+      "formula": "A-40",
+      "displayNameZh": "水溫",
+      "descriptionZh": "引擎冷卻液（水箱水）的溫度。正常運轉時通常落在 85–105°C 之間；長時間偏低代表恆溫器可能故障，過高則是過熱警訊，是判斷引擎健康狀況最基本的一個數值。",
+      "group": "溫度"
+    },
+    {
+      "request": "0104",
+      "field": "engineLoadPercent",
+      "unit": "%",
+      "formula": "A*100/255",
+      "displayNameZh": "引擎負載",
+      "descriptionZh": "引擎目前的計算負荷百分比，反映引擎相對於最大進氣能力的負擔程度，油門全開、爬坡、載重時會升高。可以用來觀察引擎是否吃力。",
+      "group": "引擎與動力"
+    },
+    {
+      "request": "0111",
+      "field": "throttlePercent",
+      "unit": "%",
+      "formula": "A*100/255",
+      "fastPoll": true,
+      "displayNameZh": "節氣門開度",
+      "descriptionZh": "節氣門實際開度百分比，反映油門踏板透過節氣門系統實際控制進氣的程度，跟轉速/車速一起看可以了解駕駛操作。",
+      "group": "引擎與動力"
+    },
+    {
+      "request": "0142",
+      "field": "controlModuleVoltage",
+      "unit": "V",
+      "formula": "((A*256)+B)/1000",
+      "displayNameZh": "電瓶電壓",
+      "descriptionZh": "引擎控制模組量到的車用電瓶（通常是 12V 系統）電壓。發動機運轉時應該在 13.5–14.5V 左右（代表發電機正常充電），熄火時偏低則是電瓶健康度的指標。",
+      "group": "電力與診斷"
+    },
+    {
+      "request": "010F",
+      "field": "intakeAirTempC",
+      "unit": "度",
+      "formula": "A-40",
+      "displayNameZh": "進氣溫度",
+      "descriptionZh": "進氣岐管內的空氣溫度，會受室外氣溫、引擎室散熱影響，用來計算進氣密度以校正噴油量。",
+      "group": "溫度"
+    },
+    {
+      "request": "0110",
+      "field": "mafGramsPerSec",
+      "unit": "g/s",
+      "formula": "((A*256)+B)/100",
+      "displayNameZh": "進氣流量",
+      "descriptionZh": "質量空氣流量感測器（MAF）量到的每秒進氣質量，是估算瞬時油耗、判斷引擎進氣是否正常最關鍵的原始數據之一。"
+    },
+    {
+      "request": "010B",
+      "field": "intakeManifoldPressureKPA",
+      "unit": "kPa",
+      "formula": "A",
+      "fastPoll": true,
+      "displayNameZh": "進氣歧管壓力",
+      "descriptionZh": "進氣岐管內的絕對壓力（歧管真空度的另一種表示方式），怠速時數值較低、油門全開時接近大氣壓力，渦輪車全油門時可能超過大氣壓力。",
+      "group": "壓力"
+    },
+    {
+      "request": "010A",
+      "field": "fuelPressureKPA",
+      "unit": "kPa",
+      "formula": "A*3",
+      "displayNameZh": "燃油壓力",
+      "descriptionZh": "燃油供給系統的壓力（部分車輛才有回報這個值），過低可能代表油泵或油壓穩壓器有問題，影響噴油量精準度。",
+      "group": "壓力"
+    },
+    {
+      "request": "0133",
+      "field": "barometricPressureKPA",
+      "unit": "kPa",
+      "formula": "A",
+      "displayNameZh": "大氣壓力",
+      "descriptionZh": "目前所在地的大氣壓力，海拔越高數值越低，ECU 會用這個值校正噴油與點火，跟天氣預報的氣壓意義不完全相同（沒有換算到海平面）。",
+      "group": "壓力"
+    },
+    {
+      "request": "012F",
+      "field": "fuelLevelPercent",
+      "unit": "%",
+      "formula": "A*100/255",
+      "displayNameZh": "油量",
+      "descriptionZh": "油箱油量百分比，來源是油箱浮筒感測器換算的訊號，跟儀表板油量表通常是同一組數據。",
+      "group": "燃油與排放"
+    },
+    {
+      "request": "0146",
+      "field": "ambientAirTempC",
+      "unit": "度",
+      "formula": "A-40",
+      "displayNameZh": "外部氣溫",
+      "descriptionZh": "車外環境溫度感測器讀值，跟車內顯示的外部氣溫通常是同一顆感測器。",
+      "group": "溫度"
+    },
+    {
+      "request": "015C",
+      "field": "engineOilTempC",
+      "unit": "度",
+      "formula": "A-40",
+      "displayNameZh": "機油溫度",
+      "descriptionZh": "機油溫度（不是所有車都有回報這個 PID），比水溫更能反映引擎內部實際運轉溫度，賽道/激烈操駕時比較會關注這個數值。",
+      "group": "溫度"
+    },
+    {
+      "request": "011F",
+      "field": "runtimeSinceStartSec",
+      "unit": "秒",
+      "formula": "(A*256)+B",
+      "displayNameZh": "啟動後運轉時間",
+      "descriptionZh": "這次發動引擎後已經運轉的秒數，重新熄火發動會歸零。",
+      "group": "引擎與動力"
+    },
+    {
+      "request": "0106",
+      "field": "shortTermFuelTrimBank1Percent",
+      "unit": "%",
+      "formula": "(A-128)*100/128",
+      "displayNameZh": "短期燃油修正（Bank 1）",
+      "descriptionZh": "ECU 針對汽缸列 1（Bank 1）即時微調噴油量的百分比，正值代表正在加油、負值代表正在減油，用來讓混合氣維持在理論空燃比附近。長期偏離 0 太多可能代表進氣或噴油系統有洩漏/積碳等問題。",
+      "group": "燃油與排放"
+    },
+    {
+      "request": "0107",
+      "field": "longTermFuelTrimBank1Percent",
+      "unit": "%",
+      "formula": "(A-128)*100/128",
+      "displayNameZh": "長期燃油修正（Bank 1）",
+      "descriptionZh": "Bank 1 的長期燃油修正值，是短期修正經過一段時間學習後的平均趨勢，比瞬時的短期修正更能反映系統性的問題（如引擎老化、感測器飄移）。",
+      "group": "燃油與排放"
+    },
+    {
+      "request": "0108",
+      "field": "shortTermFuelTrimBank2Percent",
+      "unit": "%",
+      "formula": "(A-128)*100/128",
+      "displayNameZh": "短期燃油修正（Bank 2）",
+      "descriptionZh": "跟 Bank 1 短期燃油修正意義相同，只是對象是另一列汽缸（V型或水平對臥引擎才會有兩個 Bank）。",
+      "group": "燃油與排放"
+    },
+    {
+      "request": "0109",
+      "field": "longTermFuelTrimBank2Percent",
+      "unit": "%",
+      "formula": "(A-128)*100/128",
+      "displayNameZh": "長期燃油修正（Bank 2）",
+      "descriptionZh": "跟 Bank 1 長期燃油修正意義相同，對象是 Bank 2 汽缸列。",
+      "group": "燃油與排放"
+    },
+    {
+      "request": "010E",
+      "field": "timingAdvanceDegrees",
+      "unit": "度",
+      "formula": "A/2-64",
+      "displayNameZh": "點火提前角",
+      "descriptionZh": "目前的點火提前角（相對於一號缸上死點的角度），引擎爆震、爬坡重載時 ECU 通常會自動略為延後點火時機來保護引擎。",
+      "group": "引擎與動力"
+    },
+    {
+      "request": "0121",
+      "field": "distanceWithMilOnKM",
+      "unit": "公里",
+      "formula": "(A*256)+B",
+      "displayNameZh": "故障燈亮起後行駛里程",
+      "descriptionZh": "故障燈（MIL）亮起後，車輛已經行駛的距離。故障排除後這個數字通常會歸零。",
+      "group": "電力與診斷"
+    },
+    {
+      "request": "0177",
+      "field": "chargeAirCoolerTempC",
+      "unit": "度",
+      "formula": "B-40",
+      "displayNameZh": "中冷器溫度",
+      "descriptionZh": "中間冷卻器（Intercooler）出口的進氣溫度，渦輪/機械增壓車才會有意義，數值越接近外氣溫代表中冷器散熱效果越好。",
+      "group": "溫度"
+    },
+    {
+      "request": "0124",
+      "field": "lambdaBank1Sensor1",
+      "unit": "ratio",
+      "formula": "((A*256)+B)*0.0000305",
+      "displayNameZh": "氧感應器 Lambda",
+      "descriptionZh": "氧感測器量到的實際空燃比相對於理論空燃比的比值（1.0 代表剛好在理論值），配合短期/長期燃油修正可以判斷混合氣偏濃或偏稀。",
+      "group": "燃油與排放"
+    },
+    {
+      "request": "0170",
+      "field": "boostPressureCommandedKPA",
+      "unit": "kPa",
+      "formula": "((B*256)+C)*0.03125",
+      "displayNameZh": "增壓目標值",
+      "descriptionZh": "渦輪增壓系統的目標（指令）增壓值，來自 ECU 的控制邏輯。",
+      "group": "壓力"
+    },
+    {
+      "request": "0170",
+      "field": "boostPressureActualKPA",
+      "unit": "kPa",
+      "formula": "((D*256)+E)*0.03125",
+      "displayNameZh": "增壓實際值",
+      "descriptionZh": "渦輪增壓系統目前實際量到的增壓值，跟目標值差太多可能代表洩壓閥、渦輪控制機構有問題。",
+      "group": "壓力"
+    },
+    {
+      "request": "0173",
+      "field": "exhaustPressureBank1KPA",
+      "unit": "kPa",
+      "formula": "((B*256)+C)*0.01",
+      "displayNameZh": "排氣壓力",
+      "descriptionZh": "Bank 1 排氣系統的壓力，柴油車常用來監控 DPF（排氣微粒濾清器）是否阻塞。",
+      "group": "壓力"
+    },
+    {
+      "request": "017A",
+      "field": "dpfInletPressureKPA",
+      "unit": "kPa",
+      "formula": "((D*256)+E)*0.01",
+      "displayNameZh": "DPF 進氣壓力",
+      "descriptionZh": "柴油車 DPF（排氣微粒濾清器）進氣端壓力，跟出氣端壓力的壓差是判斷 DPF 阻塞程度的重要依據。",
+      "group": "壓力"
+    },
+    {
+      "request": "017A",
+      "field": "dpfOutletPressureKPA",
+      "unit": "kPa",
+      "formula": "((F*256)+G)*0.01",
+      "displayNameZh": "DPF 出氣壓力",
+      "descriptionZh": "柴油車 DPF 出氣端壓力，配合進氣端壓力計算壓差。",
+      "group": "壓力"
+    },
+    {
+      "request": "016D",
+      "field": "fuelRailPressureCommandedKPA",
+      "unit": "kPa",
+      "formula": "((B*256)+C)*10",
+      "displayNameZh": "燃油軌壓目標值",
+      "descriptionZh": "共軌式噴射系統的目標燃油軌壓，柴油車跟缸內直噴汽油車才會有意義。",
+      "group": "壓力"
+    },
+    {
+      "request": "016D",
+      "field": "fuelRailPressureActualKPA",
+      "unit": "kPa",
+      "formula": "((D*256)+E)*10",
+      "displayNameZh": "燃油軌壓實際值",
+      "descriptionZh": "燃油軌目前實際壓力，跟目標值差距過大可能代表高壓油泵或壓力調節閥有問題。",
+      "group": "壓力"
+    },
+    {
+      "request": "015E",
+      "field": "engineFuelRateLPH",
+      "unit": "公升/小時",
+      "formula": "((A*256)+B)*0.05",
+      "displayNameZh": "油耗率",
+      "descriptionZh": "ECU 自己算出的瞬時油耗率（公升/小時），如果車輛有回報這個 PID，通常比本 App 自己用 MAF 估算的瞬時油耗更準確，因為是原廠用噴油嘴實際噴油時間直接算出來的。",
+      "group": "燃油與排放"
+    },
+    {
+      "request": "0178",
+      "field": "exhaustGasTempBank1Sensor1C",
+      "unit": "度",
+      "formula": "(((B*256)+C)*0.1)-40",
+      "displayNameZh": "排氣溫度（感應器 1）",
+      "descriptionZh": "Bank 1 排氣溫度感測器 1 的讀值（通常靠近觸媒轉化器前端），用來保護觸媒與監控燃燒狀況，柴油車也用來監控 DPF 再生溫度。",
+      "group": "溫度"
+    },
+    {
+      "request": "0178",
+      "field": "exhaustGasTempBank1Sensor2C",
+      "unit": "度",
+      "formula": "(((D*256)+E)*0.1)-40",
+      "displayNameZh": "排氣溫度（感應器 2）",
+      "descriptionZh": "Bank 1 排氣溫度感測器 2 的讀值，位置通常在感測器 1 之後（例如 DPF 前後）。",
+      "group": "溫度"
+    },
+    {
+      "request": "0178",
+      "field": "exhaustGasTempBank1Sensor3C",
+      "unit": "度",
+      "formula": "(((F*256)+G)*0.1)-40",
+      "displayNameZh": "排氣溫度（感應器 3）",
+      "descriptionZh": "Bank 1 排氣溫度感測器 3 的讀值，位置又更後段，不是所有車都有到第三顆感測器。",
+      "group": "溫度"
+    },
+    {
+      "request": "0183",
+      "field": "noxBank1Sensor1PPM",
+      "unit": "ppm",
+      "formula": "(B*256)+C",
+      "displayNameZh": "氮氧化物濃度",
+      "descriptionZh": "Bank 1 氮氧化物（NOx）感測器讀值，柴油車跟部分符合更嚴格排放法規的汽油車才會有，用來監控排放是否超標。",
+      "group": "燃油與排放"
+    },
+    {
+      "request": "0143",
+      "field": "absoluteLoadPercent",
+      "unit": "%",
+      "formula": "((A*256)+B)*100/255",
+      "displayNameZh": "絕對引擎負載",
+      "descriptionZh": "跟一般的引擎負荷百分比類似，但是用進氣量對照最大理論進氣量（不受海拔/進氣溫度影響）算出來的『絕對』負荷值，不同車輛間比較會更一致。",
+      "group": "燃油與排放"
+    },
+    {
+      "request": "0144",
+      "field": "commandedEquivalenceRatio",
+      "unit": "ratio",
+      "formula": "((A*256)+B)*0.0000305",
+      "displayNameZh": "指令當量比",
+      "descriptionZh": "ECU 下達的目標當量比（實際空燃比相對理論空燃比的倒數關係），主要用在稀薄燃燒或雙燃料系統的車輛。",
+      "group": "燃油與排放"
+    },
+    {
+      "request": "0145",
+      "field": "relativeThrottlePercent",
+      "unit": "%",
+      "formula": "A*100/255",
+      "fastPoll": true,
+      "displayNameZh": "相對節氣門開度",
+      "descriptionZh": "相對節氣門開度，是以節氣門「最小可控位置」為 0% 起算，跟 throttlePercent（絕對開度）算法基準點不同。",
+      "group": "引擎與動力"
+    },
+    {
+      "request": "0152",
+      "field": "ethanolFuelPercent",
+      "unit": "%",
+      "formula": "A*100/255",
+      "displayNameZh": "乙醇燃料比例",
+      "descriptionZh": "目前燃油中乙醇的比例，適用可彈性燃料（Flex-Fuel，E85 等）車輛，會影響 ECU 的噴油與點火校正。",
+      "group": "燃油與排放"
+    },
+    {
+      "request": "0159",
+      "field": "fuelRailPressureAbsoluteKPA",
+      "unit": "kPa",
+      "formula": "((A*256)+B)*10",
+      "displayNameZh": "燃油軌絕對壓力",
+      "descriptionZh": "燃油軌絕對壓力（含大氣壓力基準），跟 fuelRailPressureActualKPA/CommandedKPA 是用不同基準表示同一類數據，缸內直噴車輛常見。",
+      "group": "壓力"
+    },
+    {
+      "request": "015A",
+      "field": "relativeAcceleratorPedalPercent",
+      "unit": "%",
+      "formula": "A*100/255",
+      "fastPoll": true,
+      "displayNameZh": "相對油門踏板位置",
+      "descriptionZh": "駕駛實際踩踏油門踏板的相對位置百分比，是「電子油門」系統中最接近『駕駛意圖』的原始訊號，跟節氣門開度（引擎實際回應）分開來看可以判斷 ECU 是否介入調整（例如循跡防滑、定速巡航）。",
+      "group": "引擎與動力"
+    },
+    {
+      "request": "0161",
+      "field": "driverDemandTorquePercent",
+      "unit": "%",
+      "formula": "A-125",
+      "fastPoll": true,
+      "displayNameZh": "駕駛需求扭矩",
+      "descriptionZh": "ECU 根據油門踏板位置換算出的『駕駛需求扭矩』百分比，是現代電子節氣門引擎控制的核心概念之一。",
+      "group": "引擎與動力"
+    },
+    {
+      "request": "0162",
+      "field": "actualEngineTorquePercent",
+      "unit": "%",
+      "formula": "A-125",
+      "fastPoll": true,
+      "displayNameZh": "實際引擎扭矩",
+      "descriptionZh": "引擎目前實際輸出扭矩相對於最大扭矩的百分比，可以跟駕駛需求扭矩比較，判斷 ECU 有沒有因為保護引擎、循跡系統介入等原因限制輸出。",
+      "group": "引擎與動力"
+    },
+    {
+      "request": "0163",
+      "field": "engineReferenceTorqueNM",
+      "unit": "Nm",
+      "formula": "(A*256)+B",
+      "displayNameZh": "引擎參考扭矩",
+      "descriptionZh": "引擎在額定轉速下的參考（額定）最大扭矩值，是換算 actualEngineTorquePercent/driverDemandTorquePercent 百分比用的基準值。",
+      "group": "引擎與動力"
+    }
   ]
 }

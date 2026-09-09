@@ -4,7 +4,7 @@
 
 建議使用 JSON/YAML 等資料格式，而不是把品牌專用 PID hard-code 在 iOS 或 Windows UI。
 
-Schema 定義見 `shared/protocol-docs/vehicle-profile-schema.md`（v3）。
+Schema 定義見 `shared/protocol-docs/vehicle-profile-schema.md`（v5）。v5 起，每個 PID 可以直接在 JSON 裡帶 `displayNameZh`／`descriptionZh`／`group`（中文顯示名稱／說明／分組），Android／iOS 兩平台都從這裡讀，不再各自寫一份對照表。
 
 ## 目前檔案
 

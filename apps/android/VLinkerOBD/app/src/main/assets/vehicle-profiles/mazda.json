@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 5,
   "profileId": "mazda",
   "brand": "Mazda",
   "displayNameZh": "Mazda 私有 PID",
@@ -10,10 +10,46 @@
       "displayNameZh": "Miata (MX-5 NC)",
       "ecuHeader": "720",
       "pids": [
-        {"request": "22C901", "field": "tire1PressurePSI", "unit": "psi", "formula": "((A*1373)/1000)*0.145037738", "verified": "forum-partial"},
-        {"request": "22C902", "field": "tire2PressurePSI", "unit": "psi", "formula": "((A*1373)/1000)*0.145037738", "verified": "forum-partial"},
-        {"request": "22C903", "field": "tire3PressurePSI", "unit": "psi", "formula": "((A*1373)/1000)*0.145037738", "verified": "forum-partial"},
-        {"request": "22C904", "field": "tire4PressurePSI", "unit": "psi", "formula": "((A*1373)/1000)*0.145037738", "verified": "forum-partial"}
+        {
+          "request": "22C901",
+          "field": "tire1PressurePSI",
+          "unit": "psi",
+          "formula": "((A*1373)/1000)*0.145037738",
+          "verified": "forum-partial",
+          "displayNameZh": "胎壓 1",
+          "descriptionZh": "Mazda 車輛胎壓感測器 1 讀值（實際對應哪一輪視車型而定，原始資料沒有明確標示位置）。",
+          "group": "廠牌專屬"
+        },
+        {
+          "request": "22C902",
+          "field": "tire2PressurePSI",
+          "unit": "psi",
+          "formula": "((A*1373)/1000)*0.145037738",
+          "verified": "forum-partial",
+          "displayNameZh": "胎壓 2",
+          "descriptionZh": "Mazda 車輛胎壓感測器 2 讀值。",
+          "group": "廠牌專屬"
+        },
+        {
+          "request": "22C903",
+          "field": "tire3PressurePSI",
+          "unit": "psi",
+          "formula": "((A*1373)/1000)*0.145037738",
+          "verified": "forum-partial",
+          "displayNameZh": "胎壓 3",
+          "descriptionZh": "Mazda 車輛胎壓感測器 3 讀值。",
+          "group": "廠牌專屬"
+        },
+        {
+          "request": "22C904",
+          "field": "tire4PressurePSI",
+          "unit": "psi",
+          "formula": "((A*1373)/1000)*0.145037738",
+          "verified": "forum-partial",
+          "displayNameZh": "胎壓 4",
+          "descriptionZh": "Mazda 車輛胎壓感測器 4 讀值。",
+          "group": "廠牌專屬"
+        }
       ]
     },
     {
@@ -21,10 +57,46 @@
       "displayNameZh": "RX-8 / MazdaSpeed6",
       "ecuHeader": "751",
       "pids": [
-        {"request": "22C901", "field": "tire1PressurePSI", "unit": "psi", "formula": "((A*1373)/1000)*0.145037738", "verified": "forum-partial"},
-        {"request": "22C902", "field": "tire2PressurePSI", "unit": "psi", "formula": "((A*1373)/1000)*0.145037738", "verified": "forum-partial"},
-        {"request": "22C903", "field": "tire3PressurePSI", "unit": "psi", "formula": "((A*1373)/1000)*0.145037738", "verified": "forum-partial"},
-        {"request": "22C904", "field": "tire4PressurePSI", "unit": "psi", "formula": "((A*1373)/1000)*0.145037738", "verified": "forum-partial"}
+        {
+          "request": "22C901",
+          "field": "tire1PressurePSI",
+          "unit": "psi",
+          "formula": "((A*1373)/1000)*0.145037738",
+          "verified": "forum-partial",
+          "displayNameZh": "胎壓 1",
+          "descriptionZh": "Mazda 車輛胎壓感測器 1 讀值（實際對應哪一輪視車型而定，原始資料沒有明確標示位置）。",
+          "group": "廠牌專屬"
+        },
+        {
+          "request": "22C902",
+          "field": "tire2PressurePSI",
+          "unit": "psi",
+          "formula": "((A*1373)/1000)*0.145037738",
+          "verified": "forum-partial",
+          "displayNameZh": "胎壓 2",
+          "descriptionZh": "Mazda 車輛胎壓感測器 2 讀值。",
+          "group": "廠牌專屬"
+        },
+        {
+          "request": "22C903",
+          "field": "tire3PressurePSI",
+          "unit": "psi",
+          "formula": "((A*1373)/1000)*0.145037738",
+          "verified": "forum-partial",
+          "displayNameZh": "胎壓 3",
+          "descriptionZh": "Mazda 車輛胎壓感測器 3 讀值。",
+          "group": "廠牌專屬"
+        },
+        {
+          "request": "22C904",
+          "field": "tire4PressurePSI",
+          "unit": "psi",
+          "formula": "((A*1373)/1000)*0.145037738",
+          "verified": "forum-partial",
+          "displayNameZh": "胎壓 4",
+          "descriptionZh": "Mazda 車輛胎壓感測器 4 讀值。",
+          "group": "廠牌專屬"
+        }
       ]
     }
   ]

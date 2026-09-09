@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 5,
   "profileId": "honda",
   "brand": "Honda",
   "displayNameZh": "Honda 私有 PID",
@@ -11,8 +11,15 @@
       "unit": "%",
       "ecuHeader": "DA01",
       "ecuReceiveFilter": "01",
-      "bitField": {"bitIndex": 400, "bitLength": 8, "max": 100},
-      "verified": "community"
+      "bitField": {
+        "bitIndex": 400,
+        "bitLength": 8,
+        "max": 100
+      },
+      "verified": "community",
+      "displayNameZh": "高壓電池電量",
+      "descriptionZh": "Honda 油電車（Hybrid）高壓電池電量百分比，只適用有油電系統的車款。",
+      "group": "廠牌專屬"
     },
     {
       "request": "22202A",
@@ -20,8 +27,16 @@
       "unit": "V",
       "ecuHeader": "DA01",
       "ecuReceiveFilter": "01",
-      "bitField": {"bitIndex": 488, "bitLength": 16, "divisor": 20, "max": 400},
-      "verified": "community"
+      "bitField": {
+        "bitIndex": 488,
+        "bitLength": 16,
+        "divisor": 20,
+        "max": 400
+      },
+      "verified": "community",
+      "displayNameZh": "高壓電池電壓",
+      "descriptionZh": "Honda 油電車高壓電池組電壓。",
+      "group": "廠牌專屬"
     },
     {
       "request": "22202A",
@@ -29,8 +44,18 @@
       "unit": "A",
       "ecuHeader": "DA01",
       "ecuReceiveFilter": "01",
-      "bitField": {"bitIndex": 456, "bitLength": 16, "divisor": 50, "signed": true, "min": -100, "max": 200},
-      "verified": "community"
+      "bitField": {
+        "bitIndex": 456,
+        "bitLength": 16,
+        "divisor": 50,
+        "signed": true,
+        "min": -100,
+        "max": 200
+      },
+      "verified": "community",
+      "displayNameZh": "高壓電池電流",
+      "descriptionZh": "Honda 油電車高壓電池組電流，正負號代表充電或放電。",
+      "group": "廠牌專屬"
     },
     {
       "request": "22202C",
@@ -38,8 +63,18 @@
       "unit": "度",
       "ecuHeader": "DA10",
       "ecuReceiveFilter": "10",
-      "bitField": {"bitIndex": 1608, "bitLength": 16, "divisor": 10, "signed": true, "min": -40, "max": 215},
-      "verified": "community"
+      "bitField": {
+        "bitIndex": 1608,
+        "bitLength": 16,
+        "divisor": 10,
+        "signed": true,
+        "min": -40,
+        "max": 215
+      },
+      "verified": "community",
+      "displayNameZh": "水溫 1",
+      "descriptionZh": "Honda 油電車引擎冷卻液溫度感測器 1（部分油電車系統有兩組獨立的冷卻迴路）。",
+      "group": "廠牌專屬"
     },
     {
       "request": "22202C",
@@ -47,8 +82,18 @@
       "unit": "度",
       "ecuHeader": "DA10",
       "ecuReceiveFilter": "10",
-      "bitField": {"bitIndex": 1624, "bitLength": 16, "divisor": 10, "signed": true, "min": -40, "max": 215},
-      "verified": "community"
+      "bitField": {
+        "bitIndex": 1624,
+        "bitLength": 16,
+        "divisor": 10,
+        "signed": true,
+        "min": -40,
+        "max": 215
+      },
+      "verified": "community",
+      "displayNameZh": "水溫 2",
+      "descriptionZh": "Honda 油電車引擎冷卻液溫度感測器 2。",
+      "group": "廠牌專屬"
     },
     {
       "request": "222610",
@@ -56,8 +101,17 @@
       "unit": "%",
       "ecuHeader": "DA10",
       "ecuReceiveFilter": "10",
-      "bitField": {"bitIndex": 184, "bitLength": 8, "multiplier": 100, "divisor": 255, "max": 100},
-      "verified": "community"
+      "bitField": {
+        "bitIndex": 184,
+        "bitLength": 8,
+        "multiplier": 100,
+        "divisor": 255,
+        "max": 100
+      },
+      "verified": "community",
+      "displayNameZh": "發電機占空比",
+      "descriptionZh": "Honda 油電車發電機（Generator/MG1）運作占空比，反映引擎驅動發電機發電的工作強度。",
+      "group": "廠牌專屬"
     },
     {
       "request": "222660",
@@ -65,8 +119,15 @@
       "unit": "公里",
       "ecuHeader": "DA10",
       "ecuReceiveFilter": "10",
-      "bitField": {"bitIndex": 344, "bitLength": 24, "max": 16777215},
-      "verified": "community"
+      "bitField": {
+        "bitIndex": 344,
+        "bitLength": 24,
+        "max": 16777215
+      },
+      "verified": "community",
+      "displayNameZh": "累積里程",
+      "descriptionZh": "Ford 車輛原廠累積里程表讀值（私有 DID），跟車輛儀表板顯示的總里程一致。",
+      "group": "廠牌專屬"
     }
   ]
 }

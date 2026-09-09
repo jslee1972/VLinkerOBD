@@ -13,6 +13,13 @@ data class PidDefinition(
     // short-interval ticker instead of sharing the slow round-robin with the rest of the
     // profile's PIDs — see DashboardViewModel.restartBrandPolling().
     val fastPoll: Boolean = false,
+    // Schema v5: per-PID Chinese display name / long description / UI group, replacing the old
+    // hand-maintained PidDisplayNames/ParameterDescriptions/ParameterGroups.groupByField tables
+    // that duplicated this content on both platforms — see ParameterMetadata and
+    // shared/protocol-docs/vehicle-profile-schema.md's v5 section.
+    val displayNameZh: String? = null,
+    val descriptionZh: String? = null,
+    val group: String? = null,
 )
 
 data class PidModel(
@@ -78,6 +85,9 @@ class PidGroupRepository(private val readAsset: (String) -> String) {
                 ecuReceiveFilter = (obj["ecuReceiveFilter"] as? JsonValue.JsonString)?.value,
                 verified = (obj["verified"] as? JsonValue.JsonString)?.value,
                 fastPoll = (obj["fastPoll"] as? JsonValue.JsonBoolean)?.value ?: false,
+                displayNameZh = (obj["displayNameZh"] as? JsonValue.JsonString)?.value,
+                descriptionZh = (obj["descriptionZh"] as? JsonValue.JsonString)?.value,
+                group = (obj["group"] as? JsonValue.JsonString)?.value,
             )
         }
 

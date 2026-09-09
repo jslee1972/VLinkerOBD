@@ -88,6 +88,7 @@ fun DashboardScreen(
     onTestEcuSupport: () -> Unit,
     onToggleCustomField: (String) -> Unit,
     dtcDescriptions: DtcDescriptions,
+    parameterMetadata: ParameterMetadata,
     modifier: Modifier = Modifier,
 ) {
     var showTroubleCodeDetail by remember { mutableStateOf(false) }
@@ -287,7 +288,7 @@ fun DashboardScreen(
                         modifier = Modifier.heightIn(max = 600.dp).testTag("custom_section_grid"),
                     ) {
                         gridItems(customEntries.entries.toList(), key = { it.key }) { (field, value) ->
-                            ParameterStatCard(field, value)
+                            ParameterStatCard(field, value, parameterMetadata)
                         }
                     }
                 }
@@ -306,7 +307,7 @@ fun DashboardScreen(
             // position never jumps as new fields stream in.
             val liveReadings = state.standardReadings + state.extraReadings
             if (liveReadings.isNotEmpty()) {
-                val grouped = liveReadings.entries.groupBy { ParameterGroups.groupFor(it.key) }
+                val grouped = liveReadings.entries.groupBy { parameterMetadata.groupFor(it.key) }
                 for (group in ParameterGroups.displayOrder) {
                     val entries = grouped[group]?.sortedBy { it.key } ?: continue
                     item(key = "section_$group") { SectionLabel(group) }
@@ -318,7 +319,7 @@ fun DashboardScreen(
                             modifier = Modifier.heightIn(max = 600.dp),
                         ) {
                             gridItems(entries, key = { it.key }) { (field, value) ->
-                                ParameterStatCard(field, value)
+                                ParameterStatCard(field, value, parameterMetadata)
                             }
                         }
                     }
@@ -372,6 +373,7 @@ fun DashboardScreen(
             selectedFields = state.selectedCustomFields,
             onToggleField = onToggleCustomField,
             onDismiss = { showCustomFieldPicker = false },
+            parameterMetadata = parameterMetadata,
         )
     }
 }
@@ -497,7 +499,7 @@ private fun iconForField(field: String): ImageVector {
 }
 
 @Composable
-private fun ParameterStatCard(field: String, value: String) {
+private fun ParameterStatCard(field: String, value: String, parameterMetadata: ParameterMetadata) {
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -521,7 +523,7 @@ private fun ParameterStatCard(field: String, value: String) {
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
-                    text = PidDisplayNames.displayName(field),
+                    text = parameterMetadata.displayName(field),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -749,6 +751,7 @@ private fun CustomFieldPickerDialog(
     selectedFields: Set<String>,
     onToggleField: (String) -> Unit,
     onDismiss: () -> Unit,
+    parameterMetadata: ParameterMetadata,
 ) {
     // Which field's "i" was tapped — shown as a separate small dialog on top of this full-screen one.
     var infoField by remember { mutableStateOf<String?>(null) }
@@ -763,7 +766,7 @@ private fun CustomFieldPickerDialog(
                     Text("選擇自訂區塊參數", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
                 }
 
-                val grouped = allFields.groupBy { ParameterGroups.groupFor(it) }
+                val grouped = allFields.groupBy { parameterMetadata.groupFor(it) }
                 LazyColumn(
                     modifier = Modifier.fillMaxSize().padding(top = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -777,6 +780,7 @@ private fun CustomFieldPickerDialog(
                                 checked = field in selectedFields,
                                 onCheckedChange = { onToggleField(field) },
                                 onInfoClick = { infoField = field },
+                                parameterMetadata = parameterMetadata,
                             )
                         }
                     }
@@ -789,8 +793,8 @@ private fun CustomFieldPickerDialog(
         AlertDialog(
             onDismissRequest = { infoField = null },
             confirmButton = { TextButton(onClick = { infoField = null }) { Text("關閉") } },
-            title = { Text(PidDisplayNames.displayName(field)) },
-            text = { Text(ParameterDescriptions.description(field)) },
+            title = { Text(parameterMetadata.displayName(field)) },
+            text = { Text(parameterMetadata.description(field)) },
         )
     }
 }
@@ -801,6 +805,7 @@ private fun CustomFieldPickerRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
     onInfoClick: () -> Unit,
+    parameterMetadata: ParameterMetadata,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -810,14 +815,14 @@ private fun CustomFieldPickerRow(
     ) {
         Checkbox(checked = checked, onCheckedChange = onCheckedChange, modifier = Modifier.testTag("custom_field_checkbox_$field"))
         Text(
-            text = PidDisplayNames.displayName(field),
+            text = parameterMetadata.displayName(field),
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.weight(1f),
         )
         IconButton(onClick = onInfoClick, modifier = Modifier.size(32.dp).testTag("custom_field_info_$field")) {
             Icon(
                 Icons.Default.Info,
-                contentDescription = "${PidDisplayNames.displayName(field)}說明",
+                contentDescription = "${parameterMetadata.displayName(field)}說明",
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(18.dp),
             )

@@ -1,0 +1,99 @@
+name: VLinkerOBD
+options:
+  bundleIdPrefix: com.jslee1972
+  deploymentTarget:
+    iOS: "16.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    DEVELOPMENT_TEAM: "XCPWAGG47J"
+    CODE_SIGN_STYLE: Automatic
+targets:
+  VLinkerOBD:
+    type: application
+    platform: iOS
+    sources:
+      - path: "."
+        excludes:
+          - "README.md"
+          - "project.yml"
+          - "Resources/**"
+          - "Tests/**"
+      # Folder references (not groups) so shared/vehicle-profiles' directory layout survives into
+      # the app bundle — PidGroupRepository/DtcDescriptions/VehicleBrandDetector look these up via
+      # Bundle.main.url(forResource:withExtension:subdirectory:), which needs a real subdirectory.
+      - path: Resources/vehicle-profiles
+        type: folder
+      - path: Resources/dtc-codes
+        type: folder
+      - path: Resources/wmi-database
+        type: folder
+    info:
+      path: Info.plist
+      properties:
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSBluetoothAlwaysUsageDescription: "此 App 需要藍牙連接 OBD-II 車輛轉接器。"
+        NSBluetoothPeripheralUsageDescription: "此 App 需要藍牙連接 OBD-II 車輛轉接器。"
+        NSLocationWhenInUseUsageDescription: "此 App 使用手機 GPS 顯示車速比對，僅在使用期間讀取定位。"
+        # Lets CoreBluetooth keep the vLinker connection (and deliver already-subscribed notify
+        # characteristic updates) while the app is backgrounded — screen lock, a phone call, or
+        # switching to Maps no longer drops the link outright. It does NOT guarantee the polling
+        # loop keeps running in the background: iOS still throttles/suspends timer-driven work
+        # that isn't itself responding to an incoming BLE central event, so live gauge/trip-computer
+        # updates still pause while backgrounded — this only makes reconnecting on return faster
+        # and less likely to need a full rescan.
+        UIBackgroundModes:
+          - bluetooth-central
+        # Declares both scenes the app can host: the normal phone window (left to SwiftUI's own
+        # WindowGroup handling — no delegate class named here) and a CarPlay template scene backed
+        # by CarPlaySceneDelegate.swift. Declaring this costs nothing and changes no phone
+        # behavior — see that file's doc comment for why it still won't actually appear on a
+        # CarPlay head unit without Apple granting this app a CarPlay entitlement first (pick a
+        # category — this is a general dashboard, not navigation/parking/EV-charging-specific, so
+        # "Driving Task" is the most applicable one to request).
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: true
+          UISceneConfigurations:
+            UIWindowSceneSessionRoleApplication:
+              - UISceneConfigurationName: "Default Configuration"
+            CPTemplateApplicationSceneSessionRoleApplication:
+              - UISceneConfigurationName: "CarPlay Configuration"
+                UISceneDelegateClassName: "$(PRODUCT_MODULE_NAME).CarPlaySceneDelegate"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jslee1972.vlinkerobd
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+  VLinkerOBDTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests
+    dependencies:
+      - target: VLinkerOBD
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: "YES"
+        # Runs inside the VLinkerOBD.app process (not a standalone xctest bundle) so `Bundle.main`
+        # inside app code (PidGroupRepository/DtcDescriptions/VehicleBrandDetector) resolves to the
+        # app bundle and finds the Resources/ JSON — a plain library test target's Bundle.main
+        # would resolve to the xctest runner instead and every resource lookup would fail.
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/VLinkerOBD.app/VLinkerOBD"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        FRAMEWORK_SEARCH_PATHS:
+          - "$(inherited)"
+          - "$(PLATFORM_DIR)/Developer/Library/Frameworks"
+schemes:
+  VLinkerOBD:
+    build:
+      targets:
+        VLinkerOBD: all
+        VLinkerOBDTests: [test]
+    test:
+      targets:
+        - VLinkerOBDTests

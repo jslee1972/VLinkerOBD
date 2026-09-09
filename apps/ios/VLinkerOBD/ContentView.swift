@@ -1,128 +1,91 @@
+import CoreLocation
 import SwiftUI
+import UIKit
 
-struct ContentView: View {
-    @EnvironmentObject var obd: OBDBLEManager
-    @State private var manualCommand = "010D"
+/// Top-level view: starts BLE scanning + requests location permission once (mirrors Android's
+/// `MainActivity.onCreate`/`LaunchedEffect`), tracks GPS only while the app is in the foreground
+/// (mirrors `onStart`/`onStop`), and switches between the standard and driving-dynamics layouts —
+/// forcing landscape for the latter, since that layout is designed to be read at a glance while
+/// mounted, not held portrait.
+struct RootView: View {
+    @EnvironmentObject var controller: DashboardController
+    @Environment(\.scenePhase) private var scenePhase
+    @StateObject private var locationAuth = LocationAuthorizationRequester()
+
+    /// Bumped on mode switch, app-resume, and physical rotation to force SwiftUI to tear down and
+    /// rebuild the whole dashboard subtree via `.id()`. The gauges' `GeometryReader`/`Canvas` pair
+    /// can otherwise keep the frame size captured right before one of those events — e.g. the
+    /// `OrientationLock.apply` geometry request racing UIKit's own transition, or the window
+    /// simply not re-running layout on unlock — which is what produced two Gauges rendering
+    /// on top of each other after a lock/unlock or a physical rotation. A plain re-layout doesn't
+    /// clear that stale snapshot; only recreating the views does.
+    @State private var renderGeneration = 0
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 18) {
-                    statusCard
-                    speedCard
-                    controls
-                    manualCommandCard
-                    logCard
-                }
-                .padding()
+        Group {
+            switch controller.state.dashboardMode {
+            case .standard:
+                StandardDashboardView()
+            case .drivingDynamics:
+                DrivingDynamicsDashboardView()
             }
-            .navigationTitle("vLinker OBD")
+        }
+        .id(renderGeneration)
+        .onAppear {
+            controller.startScan()
+            locationAuth.requestIfNeeded { controller.startGpsTracking() }
+            applyOrientation(for: controller.state.dashboardMode)
+            UIDevice.current.beginGeneratingDeviceOrientationNotifications()
+        }
+        .onChange(of: controller.state.dashboardMode) { mode in
+            applyOrientation(for: mode)
+            renderGeneration += 1
+        }
+        .onChange(of: scenePhase) { phase in
+            if phase == .active {
+                controller.startGpsTracking()
+                renderGeneration += 1
+            } else {
+                controller.stopGpsTracking()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
+            renderGeneration += 1
         }
     }
 
-    private var statusCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("狀態")
-                    .font(.headline)
-                Spacer()
-                Text(obd.state.rawValue)
-                    .fontWeight(.semibold)
-            }
-
-            HStack {
-                Text("裝置")
-                Spacer()
-                Text(obd.deviceName)
-                    .foregroundStyle(.secondary)
-            }
+    private func applyOrientation(for mode: DashboardMode) {
+        switch mode {
+        case .standard:
+            OrientationLock.apply(.portrait, preferring: .portrait)
+        case .drivingDynamics:
+            OrientationLock.apply(.landscape, preferring: .landscapeRight)
         }
-        .padding()
-        .background(.thinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
     }
+}
 
-    private var speedCard: some View {
-        VStack(spacing: 2) {
-            Text("\(obd.speedKPH)")
-                .font(.system(size: 72, weight: .bold, design: .rounded))
-                .monospacedDigit()
-            Text("km/h")
-                .font(.title3)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
-        .background(.thinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 20))
-    }
+/// Thin wrapper around `CLLocationManager`'s authorization request/callback — GPS speed
+/// (`CoreLocationGpsSpeedSource`) only starts producing updates once permission is granted.
+final class LocationAuthorizationRequester: NSObject, ObservableObject, CLLocationManagerDelegate {
+    private let manager = CLLocationManager()
+    private var onGranted: (() -> Void)?
 
-    private var controls: some View {
-        HStack(spacing: 12) {
-            Button {
-                obd.startScan()
-            } label: {
-                Label("掃描 / 連線", systemImage: "antenna.radiowaves.left.and.right")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-
-            Button {
-                obd.disconnect()
-            } label: {
-                Label("中斷", systemImage: "xmark.circle")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
+    func requestIfNeeded(onGranted: @escaping () -> Void) {
+        self.onGranted = onGranted
+        manager.delegate = self
+        switch manager.authorizationStatus {
+        case .authorizedWhenInUse, .authorizedAlways:
+            onGranted()
+        case .notDetermined:
+            manager.requestWhenInUseAuthorization()
+        default:
+            break
         }
     }
 
-    private var manualCommandCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("手動 OBD 指令")
-                .font(.headline)
-
-            HStack {
-                TextField("例如 010C / 0105 / ATI", text: $manualCommand)
-                    .textFieldStyle(.roundedBorder)
-                    .textInputAutocapitalization(.characters)
-                    .autocorrectionDisabled()
-
-                Button("送出") {
-                    obd.sendManual(manualCommand)
-                }
-                .buttonStyle(.borderedProminent)
-            }
-
-            Text("最近回應")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Text(obd.rawResponse)
-                .font(.system(.caption, design: .monospaced))
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .textSelection(.enabled)
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        if manager.authorizationStatus == .authorizedWhenInUse || manager.authorizationStatus == .authorizedAlways {
+            onGranted?()
         }
-        .padding()
-        .background(.thinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-    }
-
-    private var logCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("BLE / OBD Log")
-                .font(.headline)
-
-            ScrollView(.horizontal) {
-                Text(obd.logText.isEmpty ? "尚無資料" : obd.logText)
-                    .font(.system(size: 11, design: .monospaced))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .frame(minHeight: 220)
-        }
-        .padding()
-        .background(.thinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 }

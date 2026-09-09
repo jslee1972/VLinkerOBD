@@ -8,6 +8,7 @@ import com.jslee1972.vlinkerobd.obd.DtcDescriptions
 import com.jslee1972.vlinkerobd.obd.PidGroupRepository
 import com.jslee1972.vlinkerobd.obd.VehicleBrandDetector
 import com.jslee1972.vlinkerobd.ui.DashboardViewModel
+import com.jslee1972.vlinkerobd.ui.ParameterMetadata
 import com.jslee1972.vlinkerobd.ui.SharedPreferencesCustomSectionStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -28,6 +29,9 @@ class VLinkerObdApplication : Application() {
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     lateinit var dashboardViewModel: DashboardViewModel
+        private set
+
+    lateinit var parameterMetadata: ParameterMetadata
         private set
 
     val dtcDescriptions: DtcDescriptions by lazy {
@@ -55,6 +59,9 @@ class VLinkerObdApplication : Application() {
             "Citroen" to psaProfile,
             "Peugeot" to psaProfile,
         )
+        // Built from every loaded profile, not just the selected brand, so the custom-field
+        // picker's display names/descriptions/groups work regardless of which brand is active.
+        parameterMetadata = ParameterMetadata(listOf(universalProfile) + brandProfiles.values.distinct())
         val bleClient = BleObdManager(applicationContext)
         val deviceMemory = SharedPreferencesDeviceMemory(applicationContext)
         // Comprehensive WMI->brand lookup (shared/wmi-database, ~700 entries) rather than the

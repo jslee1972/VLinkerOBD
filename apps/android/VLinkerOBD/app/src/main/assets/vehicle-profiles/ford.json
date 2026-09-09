@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 5,
   "profileId": "ford",
   "brand": "Ford",
   "displayNameZh": "Ford 私有 PID",
@@ -11,8 +11,16 @@
       "unit": "公里",
       "ecuHeader": "720",
       "ecuReceiveFilter": "728",
-      "bitField": {"bitIndex": 0, "bitLength": 24, "divisor": 10, "max": 1677721},
-      "verified": "community"
+      "bitField": {
+        "bitIndex": 0,
+        "bitLength": 24,
+        "divisor": 10,
+        "max": 1677721
+      },
+      "verified": "community",
+      "displayNameZh": "累積里程",
+      "descriptionZh": "Ford 車輛原廠累積里程表讀值（私有 DID），跟車輛儀表板顯示的總里程一致。",
+      "group": "廠牌專屬"
     },
     {
       "request": "2261A5",
@@ -20,8 +28,15 @@
       "unit": "offon",
       "ecuHeader": "720",
       "ecuReceiveFilter": "728",
-      "bitField": {"bitIndex": 2, "bitLength": 1, "max": 1},
-      "verified": "community"
+      "bitField": {
+        "bitIndex": 2,
+        "bitLength": 1,
+        "max": 1
+      },
+      "verified": "community",
+      "displayNameZh": "胎壓警示燈",
+      "descriptionZh": "Ford 車輛胎壓警示燈狀態（開/關），這個 App 目前用數字 0/1 顯示，還沒有轉換成文字說明。",
+      "group": "廠牌專屬"
     },
     {
       "request": "222813",
@@ -29,8 +44,16 @@
       "unit": "psi",
       "ecuHeader": "726",
       "ecuReceiveFilter": "72E",
-      "bitField": {"bitIndex": 0, "bitLength": 16, "divisor": 20, "max": 3276},
-      "verified": "community"
+      "bitField": {
+        "bitIndex": 0,
+        "bitLength": 16,
+        "divisor": 20,
+        "max": 3276
+      },
+      "verified": "community",
+      "displayNameZh": "左前胎壓",
+      "descriptionZh": "Ford 車輛左前輪胎壓。",
+      "group": "廠牌專屬"
     },
     {
       "request": "222814",
@@ -38,8 +61,16 @@
       "unit": "psi",
       "ecuHeader": "726",
       "ecuReceiveFilter": "72E",
-      "bitField": {"bitIndex": 0, "bitLength": 16, "divisor": 20, "max": 3276},
-      "verified": "community"
+      "bitField": {
+        "bitIndex": 0,
+        "bitLength": 16,
+        "divisor": 20,
+        "max": 3276
+      },
+      "verified": "community",
+      "displayNameZh": "右前胎壓",
+      "descriptionZh": "Ford 車輛右前輪胎壓。",
+      "group": "廠牌專屬"
     },
     {
       "request": "222815",
@@ -47,8 +78,16 @@
       "unit": "psi",
       "ecuHeader": "726",
       "ecuReceiveFilter": "72E",
-      "bitField": {"bitIndex": 0, "bitLength": 16, "divisor": 20, "max": 3276},
-      "verified": "community"
+      "bitField": {
+        "bitIndex": 0,
+        "bitLength": 16,
+        "divisor": 20,
+        "max": 3276
+      },
+      "verified": "community",
+      "displayNameZh": "右後胎壓",
+      "descriptionZh": "Ford 車輛右後輪胎壓。",
+      "group": "廠牌專屬"
     },
     {
       "request": "222816",
@@ -56,8 +95,16 @@
       "unit": "psi",
       "ecuHeader": "726",
       "ecuReceiveFilter": "72E",
-      "bitField": {"bitIndex": 0, "bitLength": 16, "divisor": 20, "max": 3276},
-      "verified": "community"
+      "bitField": {
+        "bitIndex": 0,
+        "bitLength": 16,
+        "divisor": 20,
+        "max": 3276
+      },
+      "verified": "community",
+      "displayNameZh": "左後胎壓",
+      "descriptionZh": "Ford 車輛左後輪胎壓。",
+      "group": "廠牌專屬"
     }
   ]
 }

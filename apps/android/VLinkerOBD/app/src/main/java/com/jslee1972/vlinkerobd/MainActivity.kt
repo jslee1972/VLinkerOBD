@@ -46,6 +46,7 @@ class MainActivity : ComponentActivity() {
         val app = application as VLinkerObdApplication
         val viewModel = app.dashboardViewModel
         val dtcDescriptions = app.dtcDescriptions
+        val parameterMetadata = app.parameterMetadata
 
         setContent {
             VLinkerObdTheme {
@@ -107,6 +108,7 @@ class MainActivity : ComponentActivity() {
                     onTestEcuSupport = viewModel::testEcuSupport,
                     onToggleCustomField = viewModel::toggleCustomField,
                     dtcDescriptions = dtcDescriptions,
+                    parameterMetadata = parameterMetadata,
                     modifier = Modifier.fillMaxSize(),
                 )
             }
