@@ -35,15 +35,21 @@ struct RootView: View {
             controller.startScan()
             locationAuth.requestIfNeeded { controller.startGpsTracking() }
             applyOrientation(for: controller.state.dashboardMode)
+            applyIdleTimer(for: controller.state.dashboardMode)
             UIDevice.current.beginGeneratingDeviceOrientationNotifications()
         }
         .onChange(of: controller.state.dashboardMode) { mode in
             applyOrientation(for: mode)
+            applyIdleTimer(for: mode)
             renderGeneration += 1
         }
         .onChange(of: scenePhase) { phase in
             if phase == .active {
                 controller.startGpsTracking()
+                // Re-assert rather than rely on the value having "stuck" — returning from the
+                // background/lock screen is exactly the kind of UIKit-driven reset that can leave
+                // isIdleTimerDisabled back at its default false.
+                applyIdleTimer(for: controller.state.dashboardMode)
                 renderGeneration += 1
             } else {
                 controller.stopGpsTracking()
@@ -61,6 +67,17 @@ struct RootView: View {
         case .drivingDynamics:
             OrientationLock.apply(.landscape, preferring: .landscapeRight)
         }
+    }
+
+    /// Driven directly by `dashboardMode` here, not by 座艙模式's own `onAppear`/`onDisappear` —
+    /// those fire on every `renderGeneration`-forced rebuild (mode switch, app resume, rotation),
+    /// and SwiftUI doesn't guarantee the old view's `onDisappear` (which reset the flag to false)
+    /// runs *before* the new view's `onAppear` (which set it back to true) within that same
+    /// update. When it ran after instead, the flag was left `false` and the screen kept locking
+    /// even while 座艙模式 was on screen — a real regression `renderGeneration` introduced. Setting
+    /// it from one place, keyed on mode state instead of view lifecycle, has no such race.
+    private func applyIdleTimer(for mode: DashboardMode) {
+        UIApplication.shared.isIdleTimerDisabled = (mode == .drivingDynamics)
     }
 }
 

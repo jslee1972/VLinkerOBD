@@ -35,15 +35,30 @@ struct DrivingDynamicsDashboardView: View {
                     }
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
+                // `simultaneousGesture` (not `.gesture`/`.highPriorityGesture`) so it only ever
+                // *adds* a listener alongside the TabView's own horizontal page-swipe and any
+                // inner ScrollView's vertical scroll, never taking the touch away from them. High
+                // threshold + near-vertical requirement so an ordinary scroll rarely crosses it —
+                // best-effort over the whole page, same trade-off as `StandardDashboardView`'s
+                // matching gesture, which has the fuller explanation. The long press on the ring
+                // gauge below is the one that can't misfire.
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 30)
+                        .onEnded { value in
+                            guard value.translation.height > 100, abs(value.translation.height) > abs(value.translation.width) * 2 else { return }
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            controller.setDashboardMode(.standard)
+                        }
+                )
                 pageIndicator
             }
         }
         .preferredColorScheme(.dark)
-        // Driving-dynamics mode is meant to sit on a dash mount and be glanced at, not tapped —
-        // don't let the screen auto-lock while it's the active view. Restored on disappear so the
-        // idle timer doesn't stay disabled (and drain battery) once the user leaves this screen.
-        .onAppear { UIApplication.shared.isIdleTimerDisabled = true }
-        .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
+        // The idle-timer (keep-screen-awake) toggle lives in `RootView.applyIdleTimer`, keyed
+        // directly on `dashboardMode` — not here. This view's own `onAppear`/`onDisappear` fire on
+        // every mode switch, app resume, and device rotation (see `RootView.renderGeneration`),
+        // and racing that teardown/rebuild against a lifecycle-driven flag flip was exactly what
+        // left the screen locking again instead of staying awake.
         .sheet(isPresented: $showTroubleCodeDetail) {
             TroubleCodeDetailView(codes: controller.state.troubleCodes ?? [], brand: dtcBrand)
         }
@@ -188,11 +203,16 @@ struct DrivingDynamicsDashboardView: View {
                 speedKph: Double(controller.state.vehicleData.speedKph ?? 0),
                 gpsSpeedKph: controller.state.gpsSpeedKph,
                 rpm: Double(controller.state.vehicleData.rpm ?? 0),
-                fuelPercent: numericValue(field: "fuelLevelPercent"),
                 coolantTempC: numericValue(field: "coolantTempC")
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.vertical, 12)
+            .contentShape(Rectangle())
+            // Same press-and-hold shortcut as the standard-mode gauge card — see its comment.
+            .onLongPressGesture(minimumDuration: 0.5) {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                controller.setDashboardMode(.standard)
+            }
 
             sidePanel(fields: rightFields).frame(maxWidth: .infinity)
         }
@@ -354,15 +374,16 @@ struct GlassStatCard: View {
     }
 }
 
-/// The concentric center dial for the driving-dynamics layout: an outer ring split between engine
-/// temperature (left half) and fuel level (right half), a glowing RPM ring just inside it (cyan,
-/// turning amber past 5500 and red past the 6500 rpm redline — same threshold as the standard
-/// gauge), and the digital speed readout (with the GPS comparison value) at the center.
+/// The concentric center dial for the driving-dynamics layout: a full-sweep engine-temperature
+/// outer ring, an RPM ring just inside it (purple, turning amber past 5500 and red past the 6500
+/// rpm redline — same threshold as the standard gauge), and the digital speed readout (with the
+/// GPS comparison value) at the center. Fuel isn't shown here — this vehicle's ECU has never
+/// returned a fuel-level reading over the standard PID, so the slot it used to occupy (the outer
+/// ring's other half) went to a full-width temp ring instead of sitting permanently empty.
 private struct DrivingRingGauge: View {
     var speedKph: Double
     var gpsSpeedKph: Float?
     var rpm: Double
-    var fuelPercent: Double?
     var coolantTempC: Double?
 
     private let startAngle = 150.0
@@ -394,18 +415,13 @@ private struct DrivingRingGauge: View {
                     }
                     if let gpsSpeedKph {
                         Text("GPS \(Int(gpsSpeedKph)) km/h")
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(.white.opacity(0.45))
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.5))
                     } else {
                         Text("km/h")
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.white.opacity(0.45))
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.white.opacity(0.5))
                     }
-
-                    Text("\(Int(animatedRpm)) RPM")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(rpm >= redline ? DesignPalette.danger : .white.opacity(0.65))
-                        .padding(.top, 2)
 
                     legend
                 }
@@ -417,12 +433,13 @@ private struct DrivingRingGauge: View {
         .onAppear { animatedSpeed = speedKph; animatedRpm = rpm }
     }
 
-    /// Small color-key row so the outer ring's two halves don't rely on the viewer remembering
-    /// "blue = temp, orange = fuel" from memory alone.
+    /// Small color-key row — 轉速 here duplicates the RPM ring's own number, but it's the same
+    /// trade-off the ring already made for 水溫 (a color dot + compact digit next to the arc it
+    /// belongs to, rather than trusting the arc's position alone).
     private var legend: some View {
         HStack(spacing: 12) {
             legendItem(color: temperatureColor, label: "水溫", value: coolantTempC.map { "\(Int($0))°C" } ?? "--")
-            legendItem(color: fuelColor, label: "油量", value: fuelPercent.map { "\(Int($0))%" } ?? "--")
+            legendItem(color: rpmColor, label: "轉速", value: "\(Int(animatedRpm)) rpm")
         }
         .padding(.top, 6)
     }
@@ -432,9 +449,8 @@ private struct DrivingRingGauge: View {
         return coolantTempC > 105 ? DesignPalette.danger : DesignPalette.accent
     }
 
-    private var fuelColor: Color {
-        guard let fuelPercent else { return .white.opacity(0.3) }
-        return fuelPercent < 15 ? DesignPalette.danger : DesignPalette.warn
+    private var rpmColor: Color {
+        rpm >= redline ? DesignPalette.danger : (rpm >= redline * 0.82 ? DesignPalette.warn : DesignPalette.rpmNormal)
     }
 
     private func legendItem(color: Color, label: String, value: String) -> some View {
@@ -470,37 +486,48 @@ private struct DrivingRingGauge: View {
         ctx.stroke(path, with: .color(color), style: StrokeStyle(lineWidth: width, lineCap: .round))
     }
 
-    /// Draws the arc twice — a wide, faint pass first for a soft glow, then a crisp core on top —
-    /// instead of relying on a real-time blur filter (cheaper, and predictable at 60fps).
-    private func drawGlowArc(ctx: GraphicsContext, center: CGPoint, radius: CGFloat, width: CGFloat, fromDeg: Double, toDeg: Double, color: Color) {
+    /// A single crisp, round-capped stroke. This used to draw a second pass underneath — 2.2x
+    /// wider at low opacity, for a soft glow — but that halo was exactly the "發散" (diffuse) edge
+    /// the rings were asked to lose; a plain stroke reads far more like an instrument needle.
+    private func drawArc(ctx: GraphicsContext, center: CGPoint, radius: CGFloat, width: CGFloat, fromDeg: Double, toDeg: Double, color: Color) {
         guard toDeg > fromDeg else { return }
         let path = arcPath(center: center, radius: radius, fromDeg: fromDeg, toDeg: toDeg)
-        ctx.stroke(path, with: .color(color.opacity(0.35)), style: StrokeStyle(lineWidth: width * 2.2, lineCap: .round))
         ctx.stroke(path, with: .color(color), style: StrokeStyle(lineWidth: width, lineCap: .round))
     }
 
-    private func drawRpmRing(ctx: GraphicsContext, center: CGPoint, radius: CGFloat) {
-        drawTrack(ctx: ctx, center: center, radius: radius, width: 16, color: .white.opacity(0.08))
-        let clamped = min(rpm, 8000)
-        let color: Color = rpm >= redline ? DesignPalette.danger : (rpm >= redline * 0.82 ? DesignPalette.warn : DesignPalette.rpmNormal)
-        drawGlowArc(ctx: ctx, center: center, radius: radius, width: 16, fromDeg: startAngle, toDeg: angle(for: clamped, maxValue: 8000), color: color)
+    /// Short radial marks at even intervals across a span — the same graduated-scale idea as
+    /// `Gauge.drawTicks`, so a glance at the fill's position against the marks gives a rough
+    /// number even before reading the digital readout in the center.
+    private func drawTicks(ctx: GraphicsContext, center: CGPoint, radius: CGFloat, fromDeg: Double, toDeg: Double, count: Int) {
+        guard count > 0 else { return }
+        for i in 0...count {
+            let t = Double(i) / Double(count)
+            let deg = fromDeg + (toDeg - fromDeg) * t
+            let outer = point(center: center, radius: radius + 4, deg: deg)
+            let inner = point(center: center, radius: radius - 4, deg: deg)
+            var path = Path()
+            path.move(to: inner)
+            path.addLine(to: outer)
+            ctx.stroke(path, with: .color(.white.opacity(0.4)), style: StrokeStyle(lineWidth: 1.5))
+        }
     }
 
-    /// Left half of the sweep (150°→270°) is the coolant-temp gauge (cyan = normal, red = hot);
-    /// right half (270°→390°) is the fuel gauge (amber, red once low).
-    private func drawOuterRing(ctx: GraphicsContext, center: CGPoint, radius: CGFloat) {
-        let mid = startAngle + sweepAngle / 2
-        drawTrack(ctx: ctx, center: center, radius: radius, width: 10, color: .white.opacity(0.06))
+    private func drawRpmRing(ctx: GraphicsContext, center: CGPoint, radius: CGFloat) {
+        drawTrack(ctx: ctx, center: center, radius: radius, width: 11, color: .white.opacity(0.08))
+        let clamped = min(rpm, 8000)
+        drawArc(ctx: ctx, center: center, radius: radius, width: 11, fromDeg: startAngle, toDeg: angle(for: clamped, maxValue: 8000), color: rpmColor)
+        drawTicks(ctx: ctx, center: center, radius: radius, fromDeg: startAngle, toDeg: startAngle + sweepAngle, count: 8) // every 1000 rpm
+    }
 
+    /// Full-sweep coolant-temperature gauge (cyan = normal, red past 105°C), -20°C..120°C mapped
+    /// end to end across the whole 240° arc.
+    private func drawOuterRing(ctx: GraphicsContext, center: CGPoint, radius: CGFloat) {
+        drawTrack(ctx: ctx, center: center, radius: radius, width: 7, color: .white.opacity(0.06))
         if let coolantTempC {
-            let fraction = min(max((coolantTempC + 20) / 140, 0), 1) // -20°C..120°C mapped to the half-ring
-            let toDeg = startAngle + fraction * (mid - startAngle)
-            drawGlowArc(ctx: ctx, center: center, radius: radius, width: 10, fromDeg: startAngle, toDeg: toDeg, color: temperatureColor)
+            let fraction = min(max((coolantTempC + 20) / 140, 0), 1)
+            let toDeg = startAngle + fraction * sweepAngle
+            drawArc(ctx: ctx, center: center, radius: radius, width: 7, fromDeg: startAngle, toDeg: toDeg, color: temperatureColor)
         }
-        if let fuelPercent {
-            let fraction = min(max(fuelPercent / 100, 0), 1)
-            let toDeg = mid + fraction * (startAngle + sweepAngle - mid)
-            drawGlowArc(ctx: ctx, center: center, radius: radius, width: 10, fromDeg: mid, toDeg: toDeg, color: fuelColor)
-        }
+        drawTicks(ctx: ctx, center: center, radius: radius, fromDeg: startAngle, toDeg: startAngle + sweepAngle, count: 7) // every 20°C
     }
 }

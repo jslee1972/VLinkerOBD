@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// 標準模式 — portrait layout matching Android's `DashboardScreen.kt` section by section: status
 /// header, speed+RPM gauge card, and custom section together on an overview page, then every
@@ -26,6 +27,22 @@ struct StandardDashboardView: View {
                     }
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
+                // A `simultaneousGesture` doesn't take over the touch the way `.gesture`/
+                // `.highPriorityGesture` would — it just also watches the same drags, so the
+                // TabView's own horizontal page-swipe and any inner ScrollView's vertical scroll
+                // both keep working untouched. The high threshold + near-vertical requirement is
+                // there so an ordinary scroll (which is also a vertical drag) rarely crosses it;
+                // it's a best-effort net over the whole last page, not a guarantee — the long
+                // press on the gauge below is the gesture that can't misfire.
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 30)
+                        .onEnded { value in
+                            guard page == mergedGroupPages.count else { return }
+                            guard value.translation.height > 100, abs(value.translation.height) > abs(value.translation.width) * 2 else { return }
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            controller.setDashboardMode(.drivingDynamics)
+                        }
+                )
                 pageIndicator
             }
             // Forces the compact inline title always — the default large-title style expands when
@@ -158,6 +175,13 @@ struct StandardDashboardView: View {
         .padding(.vertical, 16)
         .padding(.horizontal, 8)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20))
+        // Press-and-hold the dials to jump straight to 座艙模式 — unlike the swipe below, a long
+        // press can't be confused with a scroll or a page-swipe, so it's the one mode-switch
+        // gesture guaranteed not to misfire.
+        .onLongPressGesture(minimumDuration: 0.5) {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            controller.setDashboardMode(.drivingDynamics)
+        }
     }
 
     private var customSection: some View {
