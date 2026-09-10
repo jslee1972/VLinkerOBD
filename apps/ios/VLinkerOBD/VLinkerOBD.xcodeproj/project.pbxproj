@@ -12,7 +12,6 @@
 		235ECD1AAF1FE2CD27FD3B7B /* GaugeMathTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C8746F7739DAF5D2E2E0B14 /* GaugeMathTests.swift */; };
 		33471B694916DA6920B00E73 /* vehicle-profiles in Resources */ = {isa = PBXBuildFile; fileRef = 9ECC54971BA3CBF82F7BDF46 /* vehicle-profiles */; };
 		334D0FF42DD4EED5EF652E26 /* BitFieldExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A2157C558F91AABEE590201 /* BitFieldExtractor.swift */; };
-		3428FE359CB65D6AB8BF5A33 /* StandardDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AE2CB9D40E662782E6B5122 /* StandardDashboardView.swift */; };
 		34A5354EB826D2EF4DBA3DAC /* ObdCommandQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB5D6013B78E46338AC34D82 /* ObdCommandQueue.swift */; };
 		3DEFB233FF96330FAEA0DCD6 /* GroupPagingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F473E3F9217616E846E07C02 /* GroupPagingTests.swift */; };
 		3FA61A0506744BEB59545C10 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2F99715B35582CF69B5B9A02 /* Assets.xcassets */; };
@@ -68,7 +67,6 @@
 		1A3D953DF57C7A0302631040 /* DtcDescriptions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DtcDescriptions.swift; sourceTree = "<group>"; };
 		2F99715B35582CF69B5B9A02 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		3A2157C558F91AABEE590201 /* BitFieldExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BitFieldExtractor.swift; sourceTree = "<group>"; };
-		3AE2CB9D40E662782E6B5122 /* StandardDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StandardDashboardView.swift; sourceTree = "<group>"; };
 		3EDE6C29F1FBA5C3A78B89F8 /* VehicleProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehicleProfile.swift; sourceTree = "<group>"; };
 		4540D79A6C3E9A6C4897E0BE /* Gauge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Gauge.swift; sourceTree = "<group>"; };
 		4C5BD7D2E08DEAA711726E78 /* DashboardController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardController.swift; sourceTree = "<group>"; };
@@ -158,7 +156,6 @@
 				D4C83D958A465833455E7102 /* ParameterMetadata.swift */,
 				04B91265E8EC694074EF9981 /* PersistenceStores.swift */,
 				6BB5D11C534349D0582A9BDD /* PidFormula.swift */,
-				3AE2CB9D40E662782E6B5122 /* StandardDashboardView.swift */,
 				E9281B27746368DE13011648 /* TrendChart.swift */,
 				4E7FAEAA0A8469772E8DF9EE /* VehicleBrandDetector.swift */,
 				3EDE6C29F1FBA5C3A78B89F8 /* VehicleProfile.swift */,
@@ -287,7 +284,6 @@
 				E156C1DC0E38AD99E8E99331 /* ParameterMetadata.swift in Sources */,
 				AD9CF2866C5D585B3F605A09 /* PersistenceStores.swift in Sources */,
 				A8D8D6B43DFE28977D92AEC0 /* PidFormula.swift in Sources */,
-				3428FE359CB65D6AB8BF5A33 /* StandardDashboardView.swift in Sources */,
 				D01A261A26261308CDB5923B /* TrendChart.swift in Sources */,
 				FC718EDA6A50763111E15D6F /* VLinkerOBDApp.swift in Sources */,
 				F72B3F7366FEB2360AB5A722 /* VehicleBrandDetector.swift in Sources */,

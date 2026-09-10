@@ -1,11 +1,11 @@
 import SwiftUI
 import UIKit
 
-/// 行車動態介面 — landscape concentric-ring dashboard: center speed (+ GPS comparison) and RPM
-/// ring in the middle, an outer ring split between engine temperature (left half) and fuel level
-/// (right half), user-pinned parameters as glass-card side panels, and every other live-reading
-/// group as its own swipeable page (a `TabView` page, not a scrolling list) instead of one long
-/// scroll — this mode is meant to be read at a glance while driving, not scrolled through.
+/// 行車動態介面 — 行車通's one screen: an outer speed ring and an inner RPM ring, each with a
+/// 5-second peak-hold marker, center readouts the user picks two of, user-pinned parameters as
+/// glass-card side panels, and every other live-reading group as its own swipeable page (a
+/// `TabView` page, not a scrolling list) instead of one long scroll — meant to be read at a
+/// glance while driving, not scrolled through.
 struct DrivingDynamicsDashboardView: View {
     @EnvironmentObject var controller: DashboardController
 
@@ -16,6 +16,7 @@ struct DrivingDynamicsDashboardView: View {
     @State private var showDevicePicker = false
     @State private var showEcuTest = false
     @State private var showCustomFieldPicker = false
+    @State private var showRingLegendPicker = false
 
     var body: some View {
         ZStack {
@@ -35,30 +36,12 @@ struct DrivingDynamicsDashboardView: View {
                     }
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
-                // `simultaneousGesture` (not `.gesture`/`.highPriorityGesture`) so it only ever
-                // *adds* a listener alongside the TabView's own horizontal page-swipe and any
-                // inner ScrollView's vertical scroll, never taking the touch away from them. High
-                // threshold + near-vertical requirement so an ordinary scroll rarely crosses it —
-                // best-effort over the whole page, same trade-off as `StandardDashboardView`'s
-                // matching gesture, which has the fuller explanation. The long press on the ring
-                // gauge below is the one that can't misfire.
-                .simultaneousGesture(
-                    DragGesture(minimumDistance: 30)
-                        .onEnded { value in
-                            guard value.translation.height > 100, abs(value.translation.height) > abs(value.translation.width) * 2 else { return }
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                            controller.setDashboardMode(.standard)
-                        }
-                )
                 pageIndicator
             }
         }
         .preferredColorScheme(.dark)
-        // The idle-timer (keep-screen-awake) toggle lives in `RootView.applyIdleTimer`, keyed
-        // directly on `dashboardMode` — not here. This view's own `onAppear`/`onDisappear` fire on
-        // every mode switch, app resume, and device rotation (see `RootView.renderGeneration`),
-        // and racing that teardown/rebuild against a lifecycle-driven flag flip was exactly what
-        // left the screen locking again instead of staying awake.
+        // Screen-awake handling lives in `RootView` (unconditional now that this is the app's
+        // only screen), not here.
         .sheet(isPresented: $showTroubleCodeDetail) {
             TroubleCodeDetailView(codes: controller.state.troubleCodes ?? [], brand: dtcBrand)
         }
@@ -66,13 +49,14 @@ struct DrivingDynamicsDashboardView: View {
         .sheet(isPresented: $showDevicePicker) { DevicePickerView() }
         .sheet(isPresented: $showEcuTest) { EcuSupportTestView() }
         .sheet(isPresented: $showCustomFieldPicker) { CustomFieldPickerView() }
+        .sheet(isPresented: $showRingLegendPicker) { RingLegendFieldPickerView() }
         .confirmationDialog("選單", isPresented: $showMenu) {
             Button("選擇連線裝置") { showDevicePicker = true }
             Button("中斷連線") { controller.disconnect() }.disabled(!controller.state.isReady)
             Button("診斷主控台") { showDiagnostics = true }
             Button("ECU 支援測試") { showEcuTest = true }.disabled(!controller.state.isReady)
             Button("編輯自訂參數") { showCustomFieldPicker = true }
-            Button("切換回標準模式") { controller.setDashboardMode(.standard) }
+            Button("選擇中央顯示參數") { showRingLegendPicker = true }
         }
     }
 
@@ -169,26 +153,15 @@ struct DrivingDynamicsDashboardView: View {
     }
 
     /// Custom-styled dots (not the system `.page` index) so they land in the brand's cyan rather
-    /// than the default white-on-white that gets lost against a light page background. The
-    /// chevron below is a tap, not a drag, back to 標準模式 — a downward drag here sits right
-    /// above the home indicator, where iOS's own Reachability edge gesture wins the touch before
-    /// our view does (see the matching note in `StandardDashboardView.pageIndicator`).
+    /// than the default white-on-white that gets lost against a light page background.
     private var pageIndicator: some View {
-        VStack(spacing: 4) {
-            HStack(spacing: 6) {
-                ForEach(0...mergedGroupPages.count, id: \.self) { index in
-                    Capsule()
-                        .fill(index == page ? DesignPalette.accent : Color.white.opacity(0.25))
-                        .frame(width: index == page ? 16 : 6, height: 6)
-                        .animation(.easeOut(duration: 0.2), value: page)
-                }
+        HStack(spacing: 6) {
+            ForEach(0...mergedGroupPages.count, id: \.self) { index in
+                Capsule()
+                    .fill(index == page ? DesignPalette.accent : Color.white.opacity(0.25))
+                    .frame(width: index == page ? 16 : 6, height: 6)
+                    .animation(.easeOut(duration: 0.2), value: page)
             }
-            Button { controller.setDashboardMode(.standard) } label: {
-                Label("返回標準模式", systemImage: "chevron.down")
-                    .font(.caption2)
-                    .foregroundStyle(.white.opacity(0.35))
-            }
-            .buttonStyle(.plain)
         }
         .padding(.vertical, 10)
     }
@@ -202,17 +175,10 @@ struct DrivingDynamicsDashboardView: View {
             DrivingRingGauge(
                 speedKph: Double(controller.state.vehicleData.speedKph ?? 0),
                 gpsSpeedKph: controller.state.gpsSpeedKph,
-                rpm: Double(controller.state.vehicleData.rpm ?? 0),
-                coolantTempC: numericValue(field: "coolantTempC")
+                rpm: Double(controller.state.vehicleData.rpm ?? 0)
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.vertical, 12)
-            .contentShape(Rectangle())
-            // Same press-and-hold shortcut as the standard-mode gauge card — see its comment.
-            .onLongPressGesture(minimumDuration: 0.5) {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                controller.setDashboardMode(.standard)
-            }
 
             sidePanel(fields: rightFields).frame(maxWidth: .infinity)
         }
@@ -249,12 +215,6 @@ struct DrivingDynamicsDashboardView: View {
             Spacer()
         }
         .padding(.horizontal, 18)
-    }
-
-    private func numericValue(field: String) -> Double? {
-        guard let text = controller.state.liveReadings[field] else { return nil }
-        let numberPart = text.split(separator: " ").first.map(String.init) ?? text
-        return Double(numberPart)
     }
 
     // MARK: Group pages (swipe between blocks instead of scrolling)
@@ -374,89 +334,113 @@ struct GlassStatCard: View {
     }
 }
 
-/// The concentric center dial for the driving-dynamics layout: a full-sweep engine-temperature
-/// outer ring, an RPM ring just inside it (purple, turning amber past 5500 and red past the 6500
-/// rpm redline — same threshold as the standard gauge), and the digital speed readout (with the
-/// GPS comparison value) at the center. Fuel isn't shown here — this vehicle's ECU has never
-/// returned a fuel-level reading over the standard PID, so the slot it used to occupy (the outer
-/// ring's other half) went to a full-width temp ring instead of sitting permanently empty.
+/// The concentric center dial: an outer speed ring (orange, matching the center digit) and an
+/// inner RPM ring (purple, turning amber past 5500 and red past the 6500 rpm redline), each with
+/// its own 5-second peak-hold marker — an arrow + number riding the ring at the highest value seen
+/// in roughly the last 5 seconds, so a glance shows not just "how fast now" but "how fast a moment
+/// ago," the way a lap-peak tachometer works. The center readout is the two fields the user picked
+/// (`RingLegendFieldPickerView`), not a fixed pair — this vehicle's ECU has never returned a
+/// fuel-level reading, so hardcoding 油量 here forever would've just stayed blank.
 private struct DrivingRingGauge: View {
+    @EnvironmentObject var controller: DashboardController
+
     var speedKph: Double
     var gpsSpeedKph: Float?
     var rpm: Double
-    var coolantTempC: Double?
 
     private let startAngle = 150.0
     private let sweepAngle = 240.0
     private let redline = 6500.0
+    private let maxSpeed = 220.0
+    private let maxRpm = 8000.0
 
     @State private var animatedSpeed: Double = 0
     @State private var animatedRpm: Double = 0
+    /// Highest value seen since the last 5-second reset — see the peak-hold marker doc above.
+    @State private var speedPeak: Double = 0
+    @State private var rpmPeak: Double = 0
+
+    private let peakResetTimer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
 
     var body: some View {
         GeometryReader { geo in
             let size = min(geo.size.width, geo.size.height)
             let center = CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
             let outerRadius = size / 2 - 10
-            let rpmRadius = outerRadius - 20
+            let rpmRadius = outerRadius - 22
 
             ZStack {
                 Canvas { ctx, _ in
-                    drawOuterRing(ctx: ctx, center: center, radius: outerRadius)
+                    drawSpeedRing(ctx: ctx, center: center, radius: outerRadius)
                     drawRpmRing(ctx: ctx, center: center, radius: rpmRadius)
                 }
-                VStack(spacing: 3) {
-                    HStack(alignment: .firstTextBaseline, spacing: 4) {
-                        Text("\(Int(animatedSpeed))")
-                            .font(.system(size: size * 0.26, weight: .heavy, design: .default))
-                            .monospacedDigit()
-                            .foregroundStyle(DesignPalette.speedOrange)
-                            .shadow(color: DesignPalette.speedOrange.opacity(0.45), radius: 14)
-                    }
+                VStack(spacing: 4) {
+                    Text("\(Int(animatedSpeed))")
+                        .font(.system(size: size * 0.3, weight: .heavy, design: .default))
+                        .monospacedDigit()
+                        .foregroundStyle(DesignPalette.speedOrange)
+                        .shadow(color: DesignPalette.speedOrange.opacity(0.45), radius: 14)
                     if let gpsSpeedKph {
                         Text("GPS \(Int(gpsSpeedKph)) km/h")
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(.white.opacity(0.5))
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(.white.opacity(0.55))
                     } else {
                         Text("km/h")
                             .font(.subheadline.weight(.medium))
                             .foregroundStyle(.white.opacity(0.5))
                     }
-
                     legend
                 }
+                // Nudges the whole readout down from dead-center, away from the crowded upper arc
+                // where the speed/RPM rings and their peak markers already sit.
+                .offset(y: size * 0.08)
             }
         }
         .aspectRatio(1, contentMode: .fit)
-        .onChange(of: speedKph) { newValue in withAnimation(.easeOut(duration: 0.3)) { animatedSpeed = newValue } }
-        .onChange(of: rpm) { newValue in withAnimation(.easeOut(duration: 0.2)) { animatedRpm = newValue } }
-        .onAppear { animatedSpeed = speedKph; animatedRpm = rpm }
-    }
-
-    /// Small color-key row — 轉速 here duplicates the RPM ring's own number, but it's the same
-    /// trade-off the ring already made for 水溫 (a color dot + compact digit next to the arc it
-    /// belongs to, rather than trusting the arc's position alone).
-    private var legend: some View {
-        HStack(spacing: 12) {
-            legendItem(color: temperatureColor, label: "水溫", value: coolantTempC.map { "\(Int($0))°C" } ?? "--")
-            legendItem(color: rpmColor, label: "轉速", value: "\(Int(animatedRpm)) rpm")
+        .onChange(of: speedKph) { newValue in
+            withAnimation(.easeOut(duration: 0.3)) { animatedSpeed = newValue }
+            if newValue > speedPeak { speedPeak = newValue }
         }
-        .padding(.top, 6)
+        .onChange(of: rpm) { newValue in
+            withAnimation(.easeOut(duration: 0.2)) { animatedRpm = newValue }
+            if newValue > rpmPeak { rpmPeak = newValue }
+        }
+        .onReceive(peakResetTimer) { _ in
+            withAnimation(.easeOut(duration: 0.4)) {
+                speedPeak = speedKph
+                rpmPeak = rpm
+            }
+        }
+        .onAppear {
+            animatedSpeed = speedKph; animatedRpm = rpm
+            speedPeak = speedKph; rpmPeak = rpm
+        }
     }
 
-    private var temperatureColor: Color {
-        guard let coolantTempC else { return .white.opacity(0.3) }
-        return coolantTempC > 105 ? DesignPalette.danger : DesignPalette.accent
+    /// The user's own two picks (`RingLegendFieldPickerView`) — plain readouts, same building
+    /// block used everywhere else live values are shown, just without the ring's own dedicated
+    /// value/unit formatting since these are arbitrary fields with their own units already baked
+    /// into `liveReadings`' formatted text.
+    private var legend: some View {
+        HStack(spacing: 16) {
+            ForEach(controller.state.ringLegendFields, id: \.self) { field in
+                legendItem(
+                    label: controller.parameterMetadata.displayName(field),
+                    value: controller.state.liveReadings[field] ?? "--"
+                )
+            }
+        }
+        .padding(.top, 4)
     }
 
     private var rpmColor: Color {
         rpm >= redline ? DesignPalette.danger : (rpm >= redline * 0.82 ? DesignPalette.warn : DesignPalette.rpmNormal)
     }
 
-    private func legendItem(color: Color, label: String, value: String) -> some View {
-        HStack(spacing: 4) {
-            Circle().fill(color).frame(width: 6, height: 6)
-            Text("\(label) \(value)").font(.caption2).foregroundStyle(.white.opacity(0.55))
+    private func legendItem(label: String, value: String) -> some View {
+        VStack(spacing: 1) {
+            Text(value).font(.footnote.weight(.bold)).foregroundStyle(.white).monospacedDigit()
+            Text(label).font(.caption2).foregroundStyle(.white.opacity(0.5))
         }
     }
 
@@ -486,9 +470,9 @@ private struct DrivingRingGauge: View {
         ctx.stroke(path, with: .color(color), style: StrokeStyle(lineWidth: width, lineCap: .round))
     }
 
-    /// A single crisp, round-capped stroke. This used to draw a second pass underneath — 2.2x
-    /// wider at low opacity, for a soft glow — but that halo was exactly the "發散" (diffuse) edge
-    /// the rings were asked to lose; a plain stroke reads far more like an instrument needle.
+    /// A single crisp, round-capped stroke — no wide, faint pass underneath for a soft glow. That
+    /// halo was exactly the "發散" (diffuse) edge the rings were asked to lose; a plain stroke
+    /// reads far more like an instrument needle.
     private func drawArc(ctx: GraphicsContext, center: CGPoint, radius: CGFloat, width: CGFloat, fromDeg: Double, toDeg: Double, color: Color) {
         guard toDeg > fromDeg else { return }
         let path = arcPath(center: center, radius: radius, fromDeg: fromDeg, toDeg: toDeg)
@@ -512,22 +496,42 @@ private struct DrivingRingGauge: View {
         }
     }
 
-    private func drawRpmRing(ctx: GraphicsContext, center: CGPoint, radius: CGFloat) {
-        drawTrack(ctx: ctx, center: center, radius: radius, width: 11, color: .white.opacity(0.08))
-        let clamped = min(rpm, 8000)
-        drawArc(ctx: ctx, center: center, radius: radius, width: 11, fromDeg: startAngle, toDeg: angle(for: clamped, maxValue: 8000), color: rpmColor)
-        drawTicks(ctx: ctx, center: center, radius: radius, fromDeg: startAngle, toDeg: startAngle + sweepAngle, count: 8) // every 1000 rpm
+    /// A small filled triangle riding just outside the ring at `value`'s angle, tip pointing back
+    /// toward the arc, plus the value itself as upright text a bit further out — the 5-second
+    /// peak-hold marker. `context.draw(_:at:)` always draws text upright regardless of the angle
+    /// it's placed at, which is what keeps the number legible all the way around the ring instead
+    /// of ending up sideways or upside-down on the left half of the sweep.
+    private func drawPeakMarker(ctx: GraphicsContext, center: CGPoint, radius: CGFloat, value: Double, maxValue: Double, color: Color, suffix: String) {
+        guard value > 0 else { return }
+        let deg = angle(for: min(value, maxValue), maxValue: maxValue)
+        let tip = point(center: center, radius: radius + 9, deg: deg)
+        let leftBase = point(center: center, radius: radius + 2, deg: deg - 3.5)
+        let rightBase = point(center: center, radius: radius + 2, deg: deg + 3.5)
+        var arrow = Path()
+        arrow.move(to: tip)
+        arrow.addLine(to: leftBase)
+        arrow.addLine(to: rightBase)
+        arrow.closeSubpath()
+        ctx.fill(arrow, with: .color(color))
+
+        let labelPoint = point(center: center, radius: radius + 22, deg: deg)
+        let label = ctx.resolve(Text("\(Int(value))\(suffix)").font(.system(size: 11, weight: .bold)).foregroundColor(color))
+        ctx.draw(label, at: labelPoint, anchor: .center)
     }
 
-    /// Full-sweep coolant-temperature gauge (cyan = normal, red past 105°C), -20°C..120°C mapped
-    /// end to end across the whole 240° arc.
-    private func drawOuterRing(ctx: GraphicsContext, center: CGPoint, radius: CGFloat) {
+    private func drawRpmRing(ctx: GraphicsContext, center: CGPoint, radius: CGFloat) {
+        drawTrack(ctx: ctx, center: center, radius: radius, width: 11, color: .white.opacity(0.08))
+        let clamped = min(rpm, maxRpm)
+        drawArc(ctx: ctx, center: center, radius: radius, width: 11, fromDeg: startAngle, toDeg: angle(for: clamped, maxValue: maxRpm), color: rpmColor)
+        drawTicks(ctx: ctx, center: center, radius: radius, fromDeg: startAngle, toDeg: startAngle + sweepAngle, count: 8) // every 1000 rpm
+        drawPeakMarker(ctx: ctx, center: center, radius: radius, value: rpmPeak, maxValue: maxRpm, color: rpmColor, suffix: "")
+    }
+
+    private func drawSpeedRing(ctx: GraphicsContext, center: CGPoint, radius: CGFloat) {
         drawTrack(ctx: ctx, center: center, radius: radius, width: 7, color: .white.opacity(0.06))
-        if let coolantTempC {
-            let fraction = min(max((coolantTempC + 20) / 140, 0), 1)
-            let toDeg = startAngle + fraction * sweepAngle
-            drawArc(ctx: ctx, center: center, radius: radius, width: 7, fromDeg: startAngle, toDeg: toDeg, color: temperatureColor)
-        }
-        drawTicks(ctx: ctx, center: center, radius: radius, fromDeg: startAngle, toDeg: startAngle + sweepAngle, count: 7) // every 20°C
+        let clamped = min(speedKph, maxSpeed)
+        drawArc(ctx: ctx, center: center, radius: radius, width: 7, fromDeg: startAngle, toDeg: angle(for: clamped, maxValue: maxSpeed), color: DesignPalette.speedOrange)
+        drawTicks(ctx: ctx, center: center, radius: radius, fromDeg: startAngle, toDeg: startAngle + sweepAngle, count: 11) // every 20 km/h
+        drawPeakMarker(ctx: ctx, center: center, radius: radius, value: speedPeak, maxValue: maxSpeed, color: DesignPalette.speedOrange, suffix: "")
     }
 }

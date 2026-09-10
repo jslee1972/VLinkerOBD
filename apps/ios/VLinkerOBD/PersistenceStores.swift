@@ -43,34 +43,26 @@ final class UserDefaultsCustomSectionStore: CustomSectionStore {
     }
 }
 
-/// Which top-level dashboard layout the user wants — see `DashboardMode`.
-protocol DashboardModeStore: AnyObject {
-    func mode() -> DashboardMode
-    func setMode(_ mode: DashboardMode)
+/// Remembers which (at most 2) fields the user chose for the ring gauge's own center legend —
+/// separate from the custom section's field set above, since this is a much smaller, fixed-size
+/// slot with room for only a couple of compact readouts next to the ring.
+protocol RingLegendFieldsStore: AnyObject {
+    func fields() -> [String]
+    func setFields(_ fields: [String])
 }
 
-final class UserDefaultsDashboardModeStore: DashboardModeStore {
+final class UserDefaultsRingLegendFieldsStore: RingLegendFieldsStore {
     private let defaults = UserDefaults.standard
-    private static let key = "vlinkerobd.dashboard_mode"
+    private static let key = "vlinkerobd.ring_legend.fields"
 
-    func mode() -> DashboardMode {
-        DashboardMode(rawValue: defaults.string(forKey: Self.key) ?? "") ?? .standard
+    /// Same "never configured vs. explicitly configured" distinction as `CustomSectionStore` —
+    /// `stringArray(forKey:)` is nil only before the user has ever touched the picker.
+    func fields() -> [String] {
+        defaults.stringArray(forKey: Self.key) ?? ParameterGroups.defaultRingLegendFields
     }
 
-    func setMode(_ mode: DashboardMode) {
-        defaults.set(mode.rawValue, forKey: Self.key)
-    }
-}
-
-/// 標準介面 (existing card/scroll layout) vs 行車動態介面 (landscape concentric-gauge layout).
-enum DashboardMode: String, CaseIterable {
-    case standard
-    case drivingDynamics
-
-    var displayNameZh: String {
-        switch self {
-        case .standard: return "標準模式"
-        case .drivingDynamics: return "座艙模式"
-        }
+    func setFields(_ fields: [String]) {
+        defaults.set(fields, forKey: Self.key)
     }
 }
+

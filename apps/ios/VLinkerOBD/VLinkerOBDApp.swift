@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 /// Builds the app-lifetime `DashboardController` and its dependencies. Mirrors Android's
 /// `VLinkerObdApplication.onCreate`: universal profile always loaded, Citroën/Peugeot merge the
@@ -34,7 +33,7 @@ enum AppDependencies {
             brandProfiles["Peugeot"] = psaProfile
         }
 
-        let controller = DashboardController(
+        return DashboardController(
             bleClient: OBDBLEManager(),
             universalProfile: universalProfile,
             brandProfiles: brandProfiles,
@@ -42,23 +41,9 @@ enum AppDependencies {
             brandDetector: VehicleBrandDetector.loadFromBundle(),
             gpsSpeedSource: CoreLocationGpsSpeedSource(),
             customSectionStore: UserDefaultsCustomSectionStore(),
-            dashboardModeStore: UserDefaultsDashboardModeStore(),
+            ringLegendFieldsStore: UserDefaultsRingLegendFieldsStore(),
             dtcDescriptions: DtcDescriptions.load()
         )
-
-        // `OrientationLock.mask` starts out `.portrait` and `RootView.onAppear` is the usual place
-        // that corrects it — but on a cold launch that resumes straight into 座艙模式 (the last
-        // mode the user was in), UIKit asks `AppDelegate.supportedInterfaceOrientationsFor:` for
-        // the window's orientation *during scene connection*, which happens before SwiftUI has
-        // mounted any view and therefore before `RootView.onAppear` has run. iOS locks the window
-        // to whatever the mask said at that moment (`.portrait`) and the `RootView`-driven
-        // landscape request that follows doesn't reliably take effect that early in the launch
-        // sequence — leaving the landscape-only 座艙模式 layout rendered inside a portrait-shaped
-        // window. Setting the mask here, synchronously as this singleton is first constructed
-        // (which happens while `VLinkerOBDApp` itself is being built, before any scene connects),
-        // means the very first orientation query already gets the right answer.
-        OrientationLock.mask = controller.state.dashboardMode == .drivingDynamics ? .landscape : .portrait
-        return controller
     }
 }
 

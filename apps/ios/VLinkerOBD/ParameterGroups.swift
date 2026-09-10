@@ -29,4 +29,9 @@ enum ParameterGroups {
         "coolantTempC", "fuelLevelPercent", "controlModuleVoltage", "engineLoadPercent",
         "instantFuelConsumption", "averageFuelConsumption", "tripDistance", "ambientAirTempC",
     ]
+
+    /// The ring gauge's own center legend defaults to 水溫 + 油量 — the two figures that used to
+    /// be hardcoded there before it became user-configurable. Only ever consulted before the user
+    /// has picked their own pair (see `RingLegendFieldsStore`).
+    static let defaultRingLegendFields = ["coolantTempC", "fuelLevelPercent"]
 }

@@ -32,8 +32,11 @@ targets:
       path: Info.plist
       properties:
         UILaunchScreen: {}
+        # Landscape-only — 行車通 has one dashboard, meant to sit on a dash mount, not be held
+        # portrait. `OrientationLock`/`AppDelegate` is what actually enforces this at runtime; this
+        # entry keeps the launch screen and system rotation UI (e.g. Control Center's rotation
+        # lock icon) consistent with that from the very first frame.
         UISupportedInterfaceOrientations:
-          - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         NSBluetoothAlwaysUsageDescription: "此 App 需要藍牙連接 OBD-II 車輛轉接器。"

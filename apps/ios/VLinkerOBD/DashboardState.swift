@@ -55,8 +55,9 @@ struct DashboardState {
     var allKnownFields: [String] = []
     /// Fields the user pinned into the dashboard's own custom section, persisted across launches.
     var selectedCustomFields: Set<String> = []
-    /// 標準介面 vs 行車動態介面 — see `DashboardMode`.
-    var dashboardMode: DashboardMode = .standard
+    /// The (at most 2) fields shown in the ring gauge's own center legend, persisted separately
+    /// from `selectedCustomFields` — see `RingLegendFieldsStore`.
+    var ringLegendFields: [String] = []
 
     var liveReadings: [String: String] { standardReadings.merging(extraReadings) { _, new in new } }
 }

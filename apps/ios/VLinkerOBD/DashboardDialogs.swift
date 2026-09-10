@@ -223,6 +223,48 @@ struct EcuTestResultRow: View {
     }
 }
 
+/// Picks the (at most 2) fields shown next to the ring gauge's center readout — see
+/// `DashboardController.toggleRingLegendField`. Same list/grouping as `CustomFieldPickerView`,
+/// just capped at 2 selections instead of unbounded.
+struct RingLegendFieldPickerView: View {
+    @EnvironmentObject var controller: DashboardController
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            let grouped = Dictionary(grouping: controller.state.allKnownFields) { controller.parameterMetadata.groupFor($0) }
+            List {
+                Section {
+                    Text("選 2 個顯示在中央圓環旁——再點第 3 個會換掉最先選的那個。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(ParameterGroups.displayOrder, id: \.self) { group in
+                    if let fields = grouped[group]?.sorted() {
+                        Section(group) {
+                            ForEach(fields, id: \.self) { field in
+                                Button {
+                                    controller.toggleRingLegendField(field)
+                                } label: {
+                                    HStack {
+                                        Image(systemName: controller.state.ringLegendFields.contains(field) ? "checkmark.square.fill" : "square")
+                                        Text(controller.parameterMetadata.displayName(field))
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("選擇中央顯示參數")
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("關閉") { dismiss() } }
+            }
+        }
+    }
+}
+
 struct CustomFieldPickerView: View {
     @EnvironmentObject var controller: DashboardController
     @Environment(\.dismiss) private var dismiss

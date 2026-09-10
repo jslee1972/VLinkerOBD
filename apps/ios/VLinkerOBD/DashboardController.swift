@@ -18,7 +18,7 @@ final class DashboardController: ObservableObject {
     private let brandDetector: VehicleBrandDetector
     private let gpsSpeedSource: GpsSpeedSource
     private let customSectionStore: CustomSectionStore
-    private let dashboardModeStore: DashboardModeStore
+    private let ringLegendFieldsStore: RingLegendFieldsStore
     let parameterMetadata: ParameterMetadata
     let dtcDescriptions: DtcDescriptions
 
@@ -74,7 +74,7 @@ final class DashboardController: ObservableObject {
         brandDetector: VehicleBrandDetector = .FALLBACK,
         gpsSpeedSource: GpsSpeedSource,
         customSectionStore: CustomSectionStore = UserDefaultsCustomSectionStore(),
-        dashboardModeStore: DashboardModeStore = UserDefaultsDashboardModeStore(),
+        ringLegendFieldsStore: RingLegendFieldsStore = UserDefaultsRingLegendFieldsStore(),
         dtcDescriptions: DtcDescriptions
     ) {
         self.bleClient = bleClient
@@ -85,7 +85,7 @@ final class DashboardController: ObservableObject {
         self.brandDetector = brandDetector
         self.gpsSpeedSource = gpsSpeedSource
         self.customSectionStore = customSectionStore
-        self.dashboardModeStore = dashboardModeStore
+        self.ringLegendFieldsStore = ringLegendFieldsStore
         self.dtcDescriptions = dtcDescriptions
 
         let allProfiles = [universalProfile] + Array(Set(brandProfiles.values.map { $0.profileId })).compactMap { id in
@@ -97,7 +97,7 @@ final class DashboardController: ObservableObject {
         state.allKnownFields = allFields
         state.availableBrands = [universalBrand] + brandProfiles.keys.sorted()
         state.selectedCustomFields = customSectionStore.selectedFields()
-        state.dashboardMode = dashboardModeStore.mode()
+        state.ringLegendFields = ringLegendFieldsStore.fields()
 
         wireBleCallbacks()
         gpsSpeedSource.onSpeedChange = { [weak self] speed in
@@ -188,11 +188,6 @@ final class DashboardController: ObservableObject {
     func startGpsTracking() { gpsSpeedSource.start() }
     func stopGpsTracking() { gpsSpeedSource.stop() }
 
-    func setDashboardMode(_ mode: DashboardMode) {
-        state.dashboardMode = mode
-        dashboardModeStore.setMode(mode)
-    }
-
     func toggleCustomField(_ field: String) {
         var fields = state.selectedCustomFields
         if fields.contains(field) { fields.remove(field) } else { fields.insert(field) }
@@ -207,6 +202,22 @@ final class DashboardController: ObservableObject {
     func clearAllCustomFields() {
         state.selectedCustomFields = []
         customSectionStore.setSelectedFields([])
+    }
+
+    /// Toggles `field` in the ring gauge's 2-slot center legend. Deselecting always just removes
+    /// it; selecting a 3rd field bumps the oldest of the current two out (FIFO) rather than
+    /// blocking the tap or popping an error — "pick your two" reads more naturally as "the two
+    /// most recent taps" than as a hard capacity limit the user has to manage explicitly.
+    func toggleRingLegendField(_ field: String) {
+        var fields = state.ringLegendFields
+        if let index = fields.firstIndex(of: field) {
+            fields.remove(at: index)
+        } else {
+            fields.append(field)
+            if fields.count > 2 { fields.removeFirst() }
+        }
+        state.ringLegendFields = fields
+        ringLegendFieldsStore.setFields(fields)
     }
 
     func selectBrand(_ brand: String) {
@@ -406,7 +417,14 @@ final class DashboardController: ObservableObject {
         if let speedKph, let mafGramsPerSec {
             let fuelLitersPerHour = mafGramsPerSec * 3600.0 / (14.7 * 750.0)
             tripDistanceKm += speedKph * tickHours
-            tripFuelLiters += fuelLitersPerHour * tickHours
+            // Idle fuel (stopped at a light, warming up) used to count toward the average here
+            // even though it adds nothing to tripDistanceKm — burning fuel for zero km is exactly
+            // what drags the average below what the car's own trip computer shows. Only fold fuel
+            // into the average while actually moving, matching the same >1 km/h floor already used
+            // just below to decide instant-consumption's units.
+            if speedKph > 1.0 {
+                tripFuelLiters += fuelLitersPerHour * tickHours
+            }
 
             if speedKph > 1.0 && fuelLitersPerHour > Self.minFuelRateForEconomyLph {
                 state.standardReadings["instantFuelConsumption"] = String(format: "%.1f 公里/公升", speedKph / fuelLitersPerHour)
