@@ -17,6 +17,7 @@
 		3FA61A0506744BEB59545C10 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2F99715B35582CF69B5B9A02 /* Assets.xcassets */; };
 		41F6CF23F9DBB96C6189F1C5 /* BleModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07A06CDD53ED8CC5FD819716 /* BleModels.swift */; };
 		4B54F67C8E331155041C1F2B /* dtc-codes in Resources */ = {isa = PBXBuildFile; fileRef = B7BA68F4DD9D345DDF109561 /* dtc-codes */; };
+		5834A34D95128D88A3E7F166 /* FloatingSpeedPiP.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00529C33265ED369259FCD60 /* FloatingSpeedPiP.swift */; };
 		5ABEF05C4F13268CFBE11B78 /* OrientationControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = A28A70C75D8111992AB2B740 /* OrientationControl.swift */; };
 		6BE0BF469B3B468B1C446FF4 /* DtcDescriptions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A3D953DF57C7A0302631040 /* DtcDescriptions.swift */; };
 		737D7C41FDB5C1E5971F31B2 /* DashboardController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C5BD7D2E08DEAA711726E78 /* DashboardController.swift */; };
@@ -28,6 +29,7 @@
 		9805A28B7974F3222E447CB4 /* ObdResponseParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FEEC23132CD8B5F59754E6F /* ObdResponseParserTests.swift */; };
 		A2643B6BAB002F8622995E61 /* OBDBLEManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5251DE99871742A89974F9A0 /* OBDBLEManager.swift */; };
 		A8D8D6B43DFE28977D92AEC0 /* PidFormula.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BB5D11C534349D0582A9BDD /* PidFormula.swift */; };
+		AB2AEA205C3D1D03BB67709E /* SpeechAnnouncer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 399E17051F67ABD40262AC59 /* SpeechAnnouncer.swift */; };
 		AD9CF2866C5D585B3F605A09 /* PersistenceStores.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04B91265E8EC694074EF9981 /* PersistenceStores.swift */; };
 		B3A03D508AB2C286D1417CFF /* Gauge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4540D79A6C3E9A6C4897E0BE /* Gauge.swift */; };
 		BB7BFD4CAD2529CD8CC03FD7 /* DashboardDialogs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06016BCE72D7ACBD31E5EEA1 /* DashboardDialogs.swift */; };
@@ -55,6 +57,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		00529C33265ED369259FCD60 /* FloatingSpeedPiP.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingSpeedPiP.swift; sourceTree = "<group>"; };
 		03A58ADFA2C5B2AAE45AA48A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		03ADAC6B8E0768811A217437 /* PidFormulaTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PidFormulaTests.swift; sourceTree = "<group>"; };
 		040FB85F950F0A0C3F5D89AB /* wmi-database */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "wmi-database"; path = "Resources/wmi-database"; sourceTree = SOURCE_ROOT; };
@@ -66,6 +69,7 @@
 		14551808151C2511C44AC253 /* VLinkerOBD.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = VLinkerOBD.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1A3D953DF57C7A0302631040 /* DtcDescriptions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DtcDescriptions.swift; sourceTree = "<group>"; };
 		2F99715B35582CF69B5B9A02 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		399E17051F67ABD40262AC59 /* SpeechAnnouncer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechAnnouncer.swift; sourceTree = "<group>"; };
 		3A2157C558F91AABEE590201 /* BitFieldExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BitFieldExtractor.swift; sourceTree = "<group>"; };
 		3EDE6C29F1FBA5C3A78B89F8 /* VehicleProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehicleProfile.swift; sourceTree = "<group>"; };
 		4540D79A6C3E9A6C4897E0BE /* Gauge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Gauge.swift; sourceTree = "<group>"; };
@@ -143,6 +147,7 @@
 				51CCA0CEBA8178EEAF7A6F81 /* DrivingDynamicsDashboardView.swift */,
 				1A3D953DF57C7A0302631040 /* DtcDescriptions.swift */,
 				B70A6C451E7CFA29E05EF522 /* DtcParser.swift */,
+				00529C33265ED369259FCD60 /* FloatingSpeedPiP.swift */,
 				4540D79A6C3E9A6C4897E0BE /* Gauge.swift */,
 				D6CDEEA05578F4C67D886ADA /* GaugeMath.swift */,
 				F480EA0F3F9F15FFF96EC2FF /* GpsSpeedSource.swift */,
@@ -156,6 +161,7 @@
 				D4C83D958A465833455E7102 /* ParameterMetadata.swift */,
 				04B91265E8EC694074EF9981 /* PersistenceStores.swift */,
 				6BB5D11C534349D0582A9BDD /* PidFormula.swift */,
+				399E17051F67ABD40262AC59 /* SpeechAnnouncer.swift */,
 				E9281B27746368DE13011648 /* TrendChart.swift */,
 				4E7FAEAA0A8469772E8DF9EE /* VehicleBrandDetector.swift */,
 				3EDE6C29F1FBA5C3A78B89F8 /* VehicleProfile.swift */,
@@ -272,6 +278,7 @@
 				D3F8C0E6F84BFEBDAE11009A /* DrivingDynamicsDashboardView.swift in Sources */,
 				6BE0BF469B3B468B1C446FF4 /* DtcDescriptions.swift in Sources */,
 				1B46F19B75E404EA4FB00C9F /* DtcParser.swift in Sources */,
+				5834A34D95128D88A3E7F166 /* FloatingSpeedPiP.swift in Sources */,
 				B3A03D508AB2C286D1417CFF /* Gauge.swift in Sources */,
 				E90FEBFC0565477E9A42CF20 /* GaugeMath.swift in Sources */,
 				F84672DB704954218768D1F6 /* GpsSpeedSource.swift in Sources */,
@@ -284,6 +291,7 @@
 				E156C1DC0E38AD99E8E99331 /* ParameterMetadata.swift in Sources */,
 				AD9CF2866C5D585B3F605A09 /* PersistenceStores.swift in Sources */,
 				A8D8D6B43DFE28977D92AEC0 /* PidFormula.swift in Sources */,
+				AB2AEA205C3D1D03BB67709E /* SpeechAnnouncer.swift in Sources */,
 				D01A261A26261308CDB5923B /* TrendChart.swift in Sources */,
 				FC718EDA6A50763111E15D6F /* VLinkerOBDApp.swift in Sources */,
 				F72B3F7366FEB2360AB5A722 /* VehicleBrandDetector.swift in Sources */,

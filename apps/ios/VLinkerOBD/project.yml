@@ -49,8 +49,12 @@ targets:
         # that isn't itself responding to an incoming BLE central event, so live gauge/trip-computer
         # updates still pause while backgrounded — this only makes reconnecting on return faster
         # and less likely to need a full rescan.
+        # `audio` is what lets Picture-in-Picture (FloatingSpeedPiP.swift) keep the floating speed
+        # window alive once the user switches away to Maps/Waze — PiP is a public API, no
+        # entitlement request needed for it, unlike CarPlay below.
         UIBackgroundModes:
           - bluetooth-central
+          - audio
         # Declares both scenes the app can host: the normal phone window (left to SwiftUI's own
         # WindowGroup handling — no delegate class named here) and a CarPlay template scene backed
         # by CarPlaySceneDelegate.swift. Declaring this costs nothing and changes no phone

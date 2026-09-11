@@ -17,6 +17,7 @@ struct DrivingDynamicsDashboardView: View {
     @State private var showEcuTest = false
     @State private var showCustomFieldPicker = false
     @State private var showRingLegendPicker = false
+    @StateObject private var pipController = FloatingSpeedPiPController()
 
     var body: some View {
         ZStack {
@@ -57,6 +58,13 @@ struct DrivingDynamicsDashboardView: View {
             Button("ECU 支援測試") { showEcuTest = true }.disabled(!controller.state.isReady)
             Button("編輯自訂參數") { showCustomFieldPicker = true }
             Button("選擇中央顯示參數") { showRingLegendPicker = true }
+            Button(pipController.isActive ? "關閉浮動車速視窗" : "開啟浮動車速視窗") {
+                if pipController.isActive {
+                    pipController.stop()
+                } else {
+                    pipController.start(with: controller)
+                }
+            }
         }
     }
 
@@ -173,7 +181,7 @@ struct DrivingDynamicsDashboardView: View {
             sidePanel(fields: leftFields).frame(maxWidth: .infinity)
 
             DrivingRingGauge(
-                speedKph: Double(controller.state.vehicleData.speedKph ?? 0),
+                obdSpeedKph: controller.state.vehicleData.speedKph.map(Double.init),
                 gpsSpeedKph: controller.state.gpsSpeedKph,
                 rpm: Double(controller.state.vehicleData.rpm ?? 0)
             )
@@ -223,12 +231,12 @@ struct DrivingDynamicsDashboardView: View {
     /// single page, each with its own subheader, sharing one scroll region.
     private func groupPage(groups: [String]) -> some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 28) {
                 ForEach(groups, id: \.self) { group in
                     let fields = controller.state.liveReadings.keys.filter { controller.parameterMetadata.groupFor($0) == group }.sorted()
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text(group).font(.title3.weight(.bold)).foregroundStyle(.white)
-                        LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12), GridItem(.flexible())], spacing: 12) {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text(group).font(.title2.weight(.bold)).foregroundStyle(.white)
+                        LazyVGrid(columns: [GridItem(.flexible(), spacing: 18), GridItem(.flexible(), spacing: 18), GridItem(.flexible())], spacing: 18) {
                             ForEach(fields, id: \.self) { field in
                                 GlassStatCard(
                                     icon: iconName(for: field),
@@ -241,8 +249,8 @@ struct DrivingDynamicsDashboardView: View {
                     }
                 }
             }
-            .padding(.horizontal, 24)
-            .padding(.top, 20)
+            .padding(.horizontal, 28)
+            .padding(.top, 24)
             .padding(.bottom, 40)
         }
     }
@@ -303,28 +311,28 @@ struct GlassStatCard: View {
     var compact: Bool
 
     var body: some View {
-        HStack(spacing: compact ? 10 : 10) {
+        HStack(spacing: compact ? 10 : 14) {
             Image(systemName: icon)
-                .font(.system(size: compact ? 15 : 14))
+                .font(.system(size: compact ? 15 : 22))
                 .foregroundStyle(DesignPalette.accent)
-                .frame(width: compact ? 22 : 24)
+                .frame(width: compact ? 22 : 30)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: compact ? 2 : 4) {
                 Text(value)
-                    .font(.system(compact ? .title2 : .title3, design: .rounded).weight(.bold))
+                    .font(.system(compact ? .title2 : .largeTitle, design: .rounded).weight(.bold))
                     .foregroundStyle(.white)
                     .monospacedDigit()
                     .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+                    .minimumScaleFactor(0.6)
                 Text(label)
-                    .font(.system(size: compact ? 12 : 11))
+                    .font(.system(size: compact ? 12 : 15))
                     .foregroundStyle(.white.opacity(0.5))
                     .lineLimit(1)
             }
             if !compact { Spacer(minLength: 0) }
         }
-        .padding(.horizontal, compact ? 12 : 12)
-        .padding(.vertical, compact ? 10 : 10)
+        .padding(.horizontal, compact ? 12 : 20)
+        .padding(.vertical, compact ? 10 : 20)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(
@@ -344,9 +352,20 @@ struct GlassStatCard: View {
 private struct DrivingRingGauge: View {
     @EnvironmentObject var controller: DashboardController
 
-    var speedKph: Double
+    /// nil whenever the OBD speed PID has gone stale (BLE dropout, weak signal, ECU not
+    /// responding) — see `speedKph` below for the GPS fallback this makes possible.
+    var obdSpeedKph: Double?
     var gpsSpeedKph: Float?
     var rpm: Double
+
+    /// The value the ring/digit/peak-hold actually track: OBD speed when it's available, GPS
+    /// speed when it isn't — rather than dropping to 0 and reading as "stopped" during a signal
+    /// gap that has nothing to do with the car's actual speed.
+    private var speedKph: Double {
+        obdSpeedKph ?? gpsSpeedKph.map(Double.init) ?? 0
+    }
+
+    private var isGpsFallback: Bool { obdSpeedKph == nil && gpsSpeedKph != nil }
 
     private let startAngle = 150.0
     private let sweepAngle = 240.0
@@ -380,7 +399,14 @@ private struct DrivingRingGauge: View {
                         .monospacedDigit()
                         .foregroundStyle(DesignPalette.speedOrange)
                         .shadow(color: DesignPalette.speedOrange.opacity(0.45), radius: 14)
-                    if let gpsSpeedKph {
+                    if isGpsFallback {
+                        // The big number above is already the GPS reading here (OBD speed went
+                        // stale), so this labels the source instead of repeating the same number
+                        // a second time the way the two-source comparison line below does.
+                        Text("GPS 訊號（OBD 中斷）")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(DesignPalette.warn)
+                    } else if let gpsSpeedKph {
                         Text("GPS \(Int(gpsSpeedKph)) km/h")
                             .font(.subheadline.weight(.bold))
                             .foregroundStyle(.white.opacity(0.55))
@@ -501,20 +527,36 @@ private struct DrivingRingGauge: View {
     /// peak-hold marker. `context.draw(_:at:)` always draws text upright regardless of the angle
     /// it's placed at, which is what keeps the number legible all the way around the ring instead
     /// of ending up sideways or upside-down on the left half of the sweep.
+    /// The arrow rides tangent to the ring — pointing the way the fill sweeps as the value grows,
+    /// not out away from the ring — with its number trailing behind it, the way a direction marker
+    /// on a track reads more naturally than a spike sticking straight out.
     private func drawPeakMarker(ctx: GraphicsContext, center: CGPoint, radius: CGFloat, value: Double, maxValue: Double, color: Color, suffix: String) {
         guard value > 0 else { return }
         let deg = angle(for: min(value, maxValue), maxValue: maxValue)
-        let tip = point(center: center, radius: radius + 9, deg: deg)
-        let leftBase = point(center: center, radius: radius + 2, deg: deg - 3.5)
-        let rightBase = point(center: center, radius: radius + 2, deg: deg + 3.5)
+        let rad = deg * .pi / 180
+        // Unit vectors at this point on the ring: `radial` points away from center, `tangent`
+        // points in the direction the arc sweeps as the value increases.
+        let radial = CGPoint(x: cos(rad), y: sin(rad))
+        let tangent = CGPoint(x: -sin(rad), y: cos(rad))
+        let markerRadius = radius + 6
+        let base = CGPoint(x: center.x + markerRadius * radial.x, y: center.y + markerRadius * radial.y)
+
+        func offset(_ p: CGPoint, _ v: CGPoint, _ distance: CGFloat) -> CGPoint {
+            CGPoint(x: p.x + v.x * distance, y: p.y + v.y * distance)
+        }
+
+        let tip = offset(base, tangent, 9)
+        let backCenter = offset(base, tangent, -3)
+        let backLeft = offset(backCenter, radial, 3.5)
+        let backRight = offset(backCenter, radial, -3.5)
         var arrow = Path()
         arrow.move(to: tip)
-        arrow.addLine(to: leftBase)
-        arrow.addLine(to: rightBase)
+        arrow.addLine(to: backLeft)
+        arrow.addLine(to: backRight)
         arrow.closeSubpath()
         ctx.fill(arrow, with: .color(color))
 
-        let labelPoint = point(center: center, radius: radius + 22, deg: deg)
+        let labelPoint = offset(offset(base, tangent, -18), radial, 12)
         let label = ctx.resolve(Text("\(Int(value))\(suffix)").font(.system(size: 11, weight: .bold)).foregroundColor(color))
         ctx.draw(label, at: labelPoint, anchor: .center)
     }

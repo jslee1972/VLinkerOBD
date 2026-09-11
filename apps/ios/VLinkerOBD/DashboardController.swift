@@ -60,8 +60,19 @@ final class DashboardController: ObservableObject {
     /// the background (no BLE background mode is declared), which reads as "行駛時間" being stuck
     /// even after a real hour of driving with the screen locked or another app frontmost.
     private var tripStartDate: Date?
+    /// True right after app launch and right after an explicit `disconnect()` — the two moments
+    /// that should actually start a fresh trip. A weak-signal dropout instead goes through
+    /// `.disconnectedAfterError`, which auto-rescans and reconnects via the same `startPolling()`
+    /// path as a real new connection; without this flag every one of those transient reconnects
+    /// silently zeroed 行駛里程/平均油耗/行駛時間 mid-drive — which is exactly what made the
+    /// average look erratic (each reset restarts the average from a tiny, noisy sample) even
+    /// though nothing was actually wrong with the fuel-economy math itself.
+    private var pendingTripReset = true
     private var previousSpeedKph: Double?
     private var previousSpeedSampleDate: Date?
+    private let speechAnnouncer = SpeechAnnouncer()
+    private var hasAnnouncedBatteryVoltage = false
+    private var lastAnnouncedGear: Int?
     private var lastSpeedKph: Double?
     private var rpmStaleCount = 0
     private var speedStaleCount = 0
@@ -182,7 +193,14 @@ final class DashboardController: ObservableObject {
     func startScan() { bleClient.startScan() }
     func stopScan() { bleClient.stopScan() }
     func connect(_ device: ScannedBleDevice) { bleClient.connect(to: device) }
-    func disconnect() { stopPolling(); bleClient.disconnect() }
+    /// Explicit user action — "I'm done with this session" — so the next connection (auto or
+    /// manual) starts a fresh trip. Contrast `.disconnectedAfterError`'s auto-recovery path, which
+    /// does *not* touch `pendingTripReset`.
+    func disconnect() {
+        stopPolling()
+        bleClient.disconnect()
+        pendingTripReset = true
+    }
     func clearLogs() { state.logs = [] }
 
     func startGpsTracking() { gpsSpeedSource.start() }
@@ -334,14 +352,23 @@ final class DashboardController: ObservableObject {
     // MARK: Fast loop (speed / rpm / MAF / trip computer)
 
     private func startPolling() {
-        tripDistanceKm = 0
-        tripFuelLiters = 0
-        tripStartDate = Date()
+        if pendingTripReset {
+            tripDistanceKm = 0
+            tripFuelLiters = 0
+            tripStartDate = Date()
+            pendingTripReset = false
+        }
         previousSpeedKph = nil
         previousSpeedSampleDate = nil
         lastSpeedKph = nil
         rpmStaleCount = 0
         speedStaleCount = 0
+        // Every connection (including a dropout's auto-reconnect) re-announces the battery
+        // voltage and re-baselines gear — unlike the trip computer above, there's no harm in
+        // saying the voltage again after a reconnect, and a stale `lastAnnouncedGear` from before
+        // the drop could otherwise misfire a "jump" announcement that isn't real.
+        hasAnnouncedBatteryVoltage = false
+        lastAnnouncedGear = nil
 
         pollingJob?.cancel()
         pollingJob = Task { [weak self] in
@@ -535,6 +562,7 @@ final class DashboardController: ObservableObject {
                         } else {
                             self.state.standardReadings[pid.field] = formatted
                         }
+                        self.announceIfNeeded(field: pid.field, value: value)
                     } else {
                         self.failureStreak[pid.field] = (self.failureStreak[pid.field] ?? 0) + 1
                     }
@@ -558,6 +586,29 @@ final class DashboardController: ObservableObject {
         let hours = totalMinutes / 60
         let minutes = totalMinutes % 60
         return hours > 0 ? "\(hours) 小時 \(minutes) 分鐘" : "\(minutes) 分鐘"
+    }
+
+    /// The two spoken announcements this app makes: battery voltage once per connection (right
+    /// after the first successful read), and gear changes from then on. Both are opt-out-free by
+    /// design — they're rare, short, and exactly the kind of glanceable-while-driving information
+    /// this app's whole landscape layout already exists for.
+    private func announceIfNeeded(field: String, value: Double) {
+        switch field {
+        case "controlModuleVoltage":
+            guard !hasAnnouncedBatteryVoltage else { return }
+            hasAnnouncedBatteryVoltage = true
+            speechAnnouncer.speak(String(format: "電池電壓 %.1f 伏特", value))
+        case "gearRaw":
+            let gear = Int(value.rounded())
+            let previousGear = lastAnnouncedGear
+            lastAnnouncedGear = gear
+            // The first reading after connecting just sets the baseline silently — there's
+            // nothing to have "jumped" from yet.
+            guard let previousGear, gear != previousGear else { return }
+            speechAnnouncer.speak("已跳\(gear)檔")
+        default:
+            break
+        }
     }
 
     /// Runs the ECU header/receive-filter sequence around a single PID read, restoring the
