@@ -10,6 +10,10 @@ struct RootView: View {
     @EnvironmentObject var controller: DashboardController
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var locationAuth = LocationAuthorizationRequester()
+    /// Owned here, not by `DrivingDynamicsDashboardView` — that view gets torn down and rebuilt
+    /// by `renderGeneration` below on every app-resume/rotation, which would silently orphan a
+    /// live PiP session. See `FloatingSpeedPiPController`'s own doc comment for the full story.
+    @StateObject private var pipController = FloatingSpeedPiPController()
 
     /// Bumped on app-resume and physical rotation to force SwiftUI to tear down and rebuild the
     /// whole dashboard subtree via `.id()`. The gauges' `GeometryReader`/`Canvas` pair can
@@ -22,6 +26,7 @@ struct RootView: View {
     var body: some View {
         DrivingDynamicsDashboardView()
             .id(renderGeneration)
+            .environmentObject(pipController)
             .onAppear {
                 controller.startScan()
                 locationAuth.requestIfNeeded { controller.startGpsTracking() }
@@ -38,6 +43,17 @@ struct RootView: View {
                     UIApplication.shared.isIdleTimerDisabled = true
                     renderGeneration += 1
                 } else {
+                    // Always stops, PiP or not: the app only ever requests "when in use" location
+                    // authorization (NSLocationWhenInUseUsageDescription) and declares no
+                    // `location` UIBackgroundMode, so iOS stops delivering CLLocation updates the
+                    // moment the app backgrounds regardless of whether an active PiP session is
+                    // otherwise keeping the process alive — an active `audio`-mode session does
+                    // not itself extend location's authorization scope, those are two independent
+                    // grants. Making the floating window's GPS fallback genuinely work while
+                    // backgrounded would mean requesting "Always" authorization (a second,
+                    // separate permission prompt) and declaring the `location` background mode —
+                    // a bigger, privacy-sensitive change to make deliberately, not as a side effect
+                    // of this fix.
                     controller.stopGpsTracking()
                 }
             }

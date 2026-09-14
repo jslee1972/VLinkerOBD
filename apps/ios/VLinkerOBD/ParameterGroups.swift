@@ -23,9 +23,11 @@ enum ParameterGroups {
     /// Seeded into the custom section / driving-dynamics side panels the first time the app runs
     /// (before the user has picked anything) — a reasonable "most owners care about this" set,
     /// restricted to universal (never brand-specific) fields so it's meaningful on any vehicle.
-    /// The user can freely add/remove from here afterward, including clearing it entirely; this is
-    /// only ever consulted when nothing has been configured yet (see `CustomSectionStore`).
-    static let defaultCustomFields: Set<String> = [
+    /// Ordered (not a set) since this is also the initial display order the user's own
+    /// drag-to-reorder then adjusts. The user can freely add/remove/reorder from here afterward,
+    /// including clearing it entirely; this is only ever consulted when nothing has been
+    /// configured yet (see `CustomSectionStore`).
+    static let defaultCustomFields = [
         "coolantTempC", "fuelLevelPercent", "controlModuleVoltage", "engineLoadPercent",
         "instantFuelConsumption", "averageFuelConsumption", "tripDistance", "ambientAirTempC",
     ]

@@ -16,6 +16,7 @@
 		3DEFB233FF96330FAEA0DCD6 /* GroupPagingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F473E3F9217616E846E07C02 /* GroupPagingTests.swift */; };
 		3FA61A0506744BEB59545C10 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2F99715B35582CF69B5B9A02 /* Assets.xcassets */; };
 		41F6CF23F9DBB96C6189F1C5 /* BleModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07A06CDD53ED8CC5FD819716 /* BleModels.swift */; };
+		425D2CD0C84F91710087152D /* CarPlayDashboardSceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E9A8C6132B651B050F049AE /* CarPlayDashboardSceneDelegate.swift */; };
 		4B54F67C8E331155041C1F2B /* dtc-codes in Resources */ = {isa = PBXBuildFile; fileRef = B7BA68F4DD9D345DDF109561 /* dtc-codes */; };
 		5834A34D95128D88A3E7F166 /* FloatingSpeedPiP.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00529C33265ED369259FCD60 /* FloatingSpeedPiP.swift */; };
 		5ABEF05C4F13268CFBE11B78 /* OrientationControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = A28A70C75D8111992AB2B740 /* OrientationControl.swift */; };
@@ -71,6 +72,7 @@
 		2F99715B35582CF69B5B9A02 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		399E17051F67ABD40262AC59 /* SpeechAnnouncer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechAnnouncer.swift; sourceTree = "<group>"; };
 		3A2157C558F91AABEE590201 /* BitFieldExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BitFieldExtractor.swift; sourceTree = "<group>"; };
+		3E9A8C6132B651B050F049AE /* CarPlayDashboardSceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarPlayDashboardSceneDelegate.swift; sourceTree = "<group>"; };
 		3EDE6C29F1FBA5C3A78B89F8 /* VehicleProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehicleProfile.swift; sourceTree = "<group>"; };
 		4540D79A6C3E9A6C4897E0BE /* Gauge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Gauge.swift; sourceTree = "<group>"; };
 		4C5BD7D2E08DEAA711726E78 /* DashboardController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardController.swift; sourceTree = "<group>"; };
@@ -139,6 +141,7 @@
 				2F99715B35582CF69B5B9A02 /* Assets.xcassets */,
 				3A2157C558F91AABEE590201 /* BitFieldExtractor.swift */,
 				07A06CDD53ED8CC5FD819716 /* BleModels.swift */,
+				3E9A8C6132B651B050F049AE /* CarPlayDashboardSceneDelegate.swift */,
 				C7115163457CF415D2A64ED8 /* CarPlaySceneDelegate.swift */,
 				5FA728D80CE134B3DC75CC7B /* ContentView.swift */,
 				4C5BD7D2E08DEAA711726E78 /* DashboardController.swift */,
@@ -270,6 +273,7 @@
 			files = (
 				334D0FF42DD4EED5EF652E26 /* BitFieldExtractor.swift in Sources */,
 				41F6CF23F9DBB96C6189F1C5 /* BleModels.swift in Sources */,
+				425D2CD0C84F91710087152D /* CarPlayDashboardSceneDelegate.swift in Sources */,
 				CEFA3375CE9F7E01DF51A6CD /* CarPlaySceneDelegate.swift in Sources */,
 				84683EC6861E3C03B662D491 /* ContentView.swift in Sources */,
 				737D7C41FDB5C1E5971F31B2 /* DashboardController.swift in Sources */,

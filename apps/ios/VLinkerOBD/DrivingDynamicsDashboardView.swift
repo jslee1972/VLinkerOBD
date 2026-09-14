@@ -17,7 +17,8 @@ struct DrivingDynamicsDashboardView: View {
     @State private var showEcuTest = false
     @State private var showCustomFieldPicker = false
     @State private var showRingLegendPicker = false
-    @StateObject private var pipController = FloatingSpeedPiPController()
+    /// Owned by `RootView`, not here — see `FloatingSpeedPiPController`'s doc comment for why.
+    @EnvironmentObject var pipController: FloatingSpeedPiPController
 
     var body: some View {
         ZStack {
@@ -51,6 +52,14 @@ struct DrivingDynamicsDashboardView: View {
         .sheet(isPresented: $showEcuTest) { EcuSupportTestView() }
         .sheet(isPresented: $showCustomFieldPicker) { CustomFieldPickerView() }
         .sheet(isPresented: $showRingLegendPicker) { RingLegendFieldPickerView() }
+        .alert("無法開啟浮動視窗", isPresented: Binding(
+            get: { pipController.lastError != nil },
+            set: { if !$0 { pipController.lastError = nil } }
+        )) {
+            Button("關閉") { pipController.lastError = nil }
+        } message: {
+            Text(pipController.lastError ?? "")
+        }
         .confirmationDialog("選單", isPresented: $showMenu) {
             Button("選擇連線裝置") { showDevicePicker = true }
             Button("中斷連線") { controller.disconnect() }.disabled(!controller.state.isReady)
@@ -195,15 +204,20 @@ struct DrivingDynamicsDashboardView: View {
 
     /// Capped to 8 (4 per side) — the side panels sit in the same glanceable-while-driving frame
     /// as the ring gauge, so more than a handful of cards per side just gets cramped and undoes
-    /// the point of a mode built to be read at a glance. The full set the user pinned is still
-    /// shown in full in the standard mode's 自訂 section.
-    private var pinnedFieldsSorted: [String] {
-        Array(controller.state.selectedCustomFields.sorted().prefix(8))
+    /// the point of a mode built to be read at a glance. In the user's own drag-to-reorder order
+    /// now (see `sidePanel`), not alphabetical — `selectedCustomFields` is itself the persisted
+    /// display order (see `DashboardState.selectedCustomFields`'s own doc comment).
+    private var pinnedFields: [String] {
+        Array(controller.state.selectedCustomFields.prefix(8))
     }
 
-    private var leftFields: [String] { Array(pinnedFieldsSorted.prefix(4)) }
-    private var rightFields: [String] { Array(pinnedFieldsSorted.dropFirst(4)) }
+    private var leftFields: [String] { Array(pinnedFields.prefix(4)) }
+    private var rightFields: [String] { Array(pinnedFields.dropFirst(4)) }
 
+    /// Long-press-then-drag to reorder (`.draggable`/`.dropDestination` — the same system gesture
+    /// iOS uses for Home Screen icons: hold, the card lifts, drag it onto another card to swap
+    /// positions) and double-tap to jump straight to the field picker instead of going via the
+    /// "..." menu's "編輯自訂參數".
     private func sidePanel(fields: [String]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             if fields.isEmpty {
@@ -218,6 +232,13 @@ struct DrivingDynamicsDashboardView: View {
                         value: controller.state.liveReadings[field] ?? "--",
                         compact: true
                     )
+                    .draggable(field)
+                    .dropDestination(for: String.self) { droppedFields, _ in
+                        guard let dropped = droppedFields.first else { return false }
+                        controller.moveCustomField(dropped, before: field)
+                        return true
+                    }
+                    .onTapGesture(count: 2) { showCustomFieldPicker = true }
                 }
             }
             Spacer()
@@ -319,11 +340,14 @@ struct GlassStatCard: View {
 
             VStack(alignment: .leading, spacing: compact ? 2 : 4) {
                 Text(value)
-                    .font(.system(compact ? .title2 : .largeTitle, design: .rounded).weight(.bold))
+                    // `.title` rather than `.largeTitle` — longer formatted values (e.g. the trip
+                    // duration string "X 小時 Y 分鐘") were clipping even at the minimum scale
+                    // factor in a 3-column grid's narrower cards on smaller landscape screens.
+                    .font(.system(compact ? .title2 : .title, design: .rounded).weight(.bold))
                     .foregroundStyle(.white)
                     .monospacedDigit()
                     .lineLimit(1)
-                    .minimumScaleFactor(0.6)
+                    .minimumScaleFactor(0.5)
                 Text(label)
                     .font(.system(size: compact ? 12 : 15))
                     .foregroundStyle(.white.opacity(0.5))

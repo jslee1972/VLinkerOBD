@@ -87,7 +87,7 @@
       "verified": "forum-partial",
       "fastPoll": true,
       "displayNameZh": "檔位",
-      "descriptionZh": "PSA 車輛目前檔位數字（手排 1–6 檔）。原始資料來源沒有 P/R/N/D 的對照表，只有单純的排檔數字，超出 1–6 範圍的數值目前沒有可信資料確認代表什麼。",
+      "descriptionZh": "PSA 車輛目前檔位。原始資料來源只驗證過手排 1–6 檔的單純排檔數字，沒有 P/R/N 的對照表；App 使用者在自排車上實測回報 0 = P（停車檔）、7 = R（倒車檔），1–6 維持前進檔位數字（N 檔尚未確認對應數值）。",
       "group": "廠牌專屬"
     },
     {

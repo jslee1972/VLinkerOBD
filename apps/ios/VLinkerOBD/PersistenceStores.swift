@@ -16,11 +16,13 @@ final class UserDefaultsDeviceMemory: DeviceMemory {
 }
 
 /// Remembers which parameter fields the user pinned into the dashboard's custom section (and, in
-/// the driving-dynamics UI, the side panels). Mirrors Android's
-/// `CustomSectionStore`/`SharedPreferencesCustomSectionStore`.
+/// the driving-dynamics UI, the side panels), in display order — an ordered array, not a set,
+/// specifically so the side panels' drag-to-reorder has a position to persist. Mirrors Android's
+/// `CustomSectionStore`/`SharedPreferencesCustomSectionStore` (which is unordered; iOS diverges
+/// here for the reordering feature).
 protocol CustomSectionStore: AnyObject {
-    func selectedFields() -> Set<String>
-    func setSelectedFields(_ fields: Set<String>)
+    func selectedFields() -> [String]
+    func setSelectedFields(_ fields: [String])
 }
 
 final class UserDefaultsCustomSectionStore: CustomSectionStore {
@@ -30,16 +32,13 @@ final class UserDefaultsCustomSectionStore: CustomSectionStore {
     /// `stringArray(forKey:)` returns nil only when the key has never been written — i.e. the
     /// user has never touched the picker yet — which is when `ParameterGroups.defaultCustomFields`
     /// applies. Once `setSelectedFields` has been called even once, whatever it stored (including
-    /// an explicitly empty set, e.g. after "全部移除") is respected as-is from then on.
-    func selectedFields() -> Set<String> {
-        guard let stored = defaults.stringArray(forKey: Self.key) else {
-            return ParameterGroups.defaultCustomFields
-        }
-        return Set(stored)
+    /// an explicitly empty array, e.g. after "全部移除") is respected as-is from then on.
+    func selectedFields() -> [String] {
+        defaults.stringArray(forKey: Self.key) ?? ParameterGroups.defaultCustomFields
     }
 
-    func setSelectedFields(_ fields: Set<String>) {
-        defaults.set(Array(fields), forKey: Self.key)
+    func setSelectedFields(_ fields: [String]) {
+        defaults.set(fields, forKey: Self.key)
     }
 }
 

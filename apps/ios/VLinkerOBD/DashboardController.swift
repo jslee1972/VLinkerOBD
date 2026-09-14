@@ -104,8 +104,6 @@ final class DashboardController: ObservableObject {
         }
         self.parameterMetadata = ParameterMetadata(profiles: allProfiles)
 
-        let allFields = Self.computeAllKnownFields(universalProfile: universalProfile, brandProfiles: brandProfiles)
-        state.allKnownFields = allFields
         state.availableBrands = [universalBrand] + brandProfiles.keys.sorted()
         state.selectedCustomFields = customSectionStore.selectedFields()
         state.ringLegendFields = ringLegendFieldsStore.fields()
@@ -116,14 +114,18 @@ final class DashboardController: ObservableObject {
         }
     }
 
-    private static func computeAllKnownFields(universalProfile: VehicleProfile, brandProfiles: [String: VehicleProfile]) -> [String] {
-        var fields = universalProfile.pids.map(\.field)
-        fields += ParameterGroups.tripComputerFields
-        for profile in brandProfiles.values {
-            fields += profile.pids.map(\.field)
-            fields += profile.models.flatMap { $0.pids.map(\.field) }
+    /// Universal fields (always relevant) plus the currently selected/detected brand's own fields
+    /// — this excludes PIDs that belong to some *other* brand's profile and can never report data
+    /// for the connected vehicle. Used by both the ring gauge's legend picker and the
+    /// custom-section field picker, so neither lists fields the connected vehicle can't answer.
+    var relevantFieldsForCurrentVehicle: [String] {
+        var fields = Set(universalProfile.pids.map(\.field))
+        fields.formUnion(ParameterGroups.tripComputerFields)
+        if state.selectedBrand != universalBrand, let profile = brandProfiles[state.selectedBrand] {
+            fields.formUnion(profile.pids.map(\.field))
+            fields.formUnion(profile.models.flatMap { $0.pids.map(\.field) })
         }
-        return Array(Set(fields)).sorted()
+        return Array(fields).sorted()
     }
 
     // MARK: BLE wiring
@@ -154,7 +156,7 @@ final class DashboardController: ObservableObject {
         guard let savedAddress = deviceMemory.lastDeviceAddress() else { return }
         guard let match = devices.first(where: { $0.address == savedAddress }) else { return }
         autoConnectAttempted = true
-        connect(match)
+        connect(match, isUserInitiated: false)
     }
 
     private func onConnectionStateChanged(_ connectionState: BleConnectionState) {
@@ -192,7 +194,22 @@ final class DashboardController: ObservableObject {
 
     func startScan() { bleClient.startScan() }
     func stopScan() { bleClient.stopScan() }
-    func connect(_ device: ScannedBleDevice) { bleClient.connect(to: device) }
+    /// The user picking a device from the picker — including switching to a *different* one while
+    /// already connected to another — always means "start a new session": `OBDBLEManager.connect
+    /// (to:)` jumps straight into a new GATT connection without routing through `.disconnected`
+    /// first, so without resetting here, switching vehicles mid-session skipped `pendingTripReset`
+    /// entirely and the new vehicle's trip computer silently inherited the old one's accumulated
+    /// distance/fuel.
+    ///
+    /// `isUserInitiated` defaults to true for that path; `maybeAutoConnect`'s auto-recovery after
+    /// a transient BLE dropout calls this same method with `false` — that path must *not* reset
+    /// the trip (it's resuming the same session, not starting a new one), which an earlier version
+    /// of this fix got backwards by resetting unconditionally here, silently zeroing the trip on
+    /// every dropout-triggered reconnect exactly like the bug this whole flag exists to prevent.
+    func connect(_ device: ScannedBleDevice, isUserInitiated: Bool = true) {
+        if isUserInitiated { pendingTripReset = true }
+        bleClient.connect(to: device)
+    }
     /// Explicit user action — "I'm done with this session" — so the next connection (auto or
     /// manual) starts a fresh trip. Contrast `.disconnectedAfterError`'s auto-recovery path, which
     /// does *not* touch `pendingTripReset`.
@@ -208,18 +225,36 @@ final class DashboardController: ObservableObject {
 
     func toggleCustomField(_ field: String) {
         var fields = state.selectedCustomFields
-        if fields.contains(field) { fields.remove(field) } else { fields.insert(field) }
+        if let index = fields.firstIndex(of: field) {
+            fields.remove(at: index)
+        } else {
+            fields.append(field)
+        }
         state.selectedCustomFields = fields
         customSectionStore.setSelectedFields(fields)
     }
 
-    /// Clears every pinned custom field at once. Explicitly persists the empty set (rather than
+    /// Clears every pinned custom field at once. Explicitly persists the empty array (rather than
     /// just clearing in-memory state) so `CustomSectionStore.selectedFields()` — which only ever
     /// falls back to the seeded defaults when nothing has been configured *yet* — respects this as
     /// a deliberate choice and doesn't silently repopulate the defaults on next launch.
     func clearAllCustomFields() {
         state.selectedCustomFields = []
         customSectionStore.setSelectedFields([])
+    }
+
+    /// Drag-to-reorder in the side panels: moves `field` to sit just before `target` in the
+    /// pinned-fields order. A no-op if either field isn't actually pinned (e.g. a stray drop) or
+    /// they're the same field (dropping a card on itself).
+    func moveCustomField(_ field: String, before target: String) {
+        guard field != target else { return }
+        var fields = state.selectedCustomFields
+        guard let fromIndex = fields.firstIndex(of: field), fields.contains(target) else { return }
+        fields.remove(at: fromIndex)
+        guard let toIndex = fields.firstIndex(of: target) else { return }
+        fields.insert(field, at: toIndex)
+        state.selectedCustomFields = fields
+        customSectionStore.setSelectedFields(fields)
     }
 
     /// Toggles `field` in the ring gauge's 2-slot center legend. Deselecting always just removes
@@ -246,18 +281,39 @@ final class DashboardController: ObservableObject {
     func sendManualCommand(_ text: String) {
         let command = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !command.isEmpty else { return }
+        sendCommandSequence([command])
+    }
+
+    /// Sends a sequence of raw commands back-to-back, pausing the fast loop once for the whole
+    /// sequence rather than per-command — typing a multi-step probe (switch header, switch
+    /// receive filter, then finally the real request) into the single-command field one line at a
+    /// time left enough of a gap between steps, at highway speed, for the ECU/bus to go idle
+    /// before the actual request landed, which is what made those manual multi-step probes
+    /// unreliable — the classic symptom is a "NO DATA" on the final command that a fully-connected
+    /// back-to-back send doesn't reproduce.
+    func sendCommandSequence(_ commands: [String]) {
+        guard !commands.isEmpty else { return }
         Task {
             fastLoopPaused = true
-            appendLog("TX > \(command)")
-            let result = await queue.execute(ObdCommand(text: command))
-            if case .success(let raw) = result {
-                state.rawResponse = raw
-                appendLog("RX < \(raw.replacingOccurrences(of: "\r", with: " ").replacingOccurrences(of: "\n", with: " "))")
-            } else {
-                appendLog("逾時：\(command)")
+            for command in commands {
+                appendLog("TX > \(command)")
+                let result = await queue.execute(ObdCommand(text: command))
+                if case .success(let raw) = result {
+                    state.rawResponse = raw
+                    appendLog("RX < \(raw.replacingOccurrences(of: "\r", with: " ").replacingOccurrences(of: "\n", with: " "))")
+                } else {
+                    appendLog("逾時：\(command)")
+                }
             }
             fastLoopPaused = false
         }
+    }
+
+    /// One-tap version of the ATSH6A8 → ATCRA688 → 22D409 probe (restoring the standard header/
+    /// filter afterward, same as `pollPid`'s own cleanup) — for capturing the raw response at a
+    /// specific gear (7th/8th, still unconfirmed) without the manual-typing delay above.
+    func probeGearRaw() {
+        sendCommandSequence(["ATSH6A8", "ATCRA688", "22D409", "ATCRA", "ATSH7DF"])
     }
 
     // MARK: Initialization
@@ -357,6 +413,13 @@ final class DashboardController: ObservableObject {
             tripFuelLiters = 0
             tripStartDate = Date()
             pendingTripReset = false
+            // These are only overwritten once enough new distance/fuel has accumulated to satisfy
+            // updateTripComputer's own thresholds — without clearing them here, the dashboard kept
+            // showing the *previous* trip's average/instant economy (describing zero km of new
+            // driving) until the new trip caught up to those thresholds.
+            state.standardReadings["averageFuelConsumption"] = nil
+            state.standardReadings["instantFuelConsumption"] = nil
+            state.standardReadings["acceleration"] = nil
         }
         previousSpeedKph = nil
         previousSpeedSampleDate = nil
@@ -422,7 +485,14 @@ final class DashboardController: ObservableObject {
             }
         }
 
-        updateTripComputer(speedKph: lastSpeedKph, mafGramsPerSec: mafGramsPerSec, accumulateMotion: !fastLoopPaused)
+        // `speedKph` (state.effectiveSpeedKph — OBD, falling back to GPS) drives distance/fuel so
+        // 行駛里程/平均油耗 keep accumulating through an OBD signal gap instead of freezing; the
+        // separate `obdSpeedKph` (lastSpeedKph — OBD only, nil during that same gap) is what
+        // acceleration is computed from, so the two consecutive samples it diffs are never a
+        // stale OBD reading against a live GPS one — that mismatch alone (the two sources
+        // routinely disagree by a few km/h) was enough to read as a spurious hard-braking spike
+        // the instant the fallback kicked in or cleared.
+        updateTripComputer(speedKph: state.effectiveSpeedKph, obdSpeedKph: lastSpeedKph, mafGramsPerSec: mafGramsPerSec, accumulateMotion: !fastLoopPaused)
     }
 
     /// Estimates fuel economy from MAF (mode 01 PID `$10`), not any vehicle-reported economy PID
@@ -434,16 +504,22 @@ final class DashboardController: ObservableObject {
     /// steady `pollIntervalMs` cadence) rather than wall-clock, which is correct while the loop is
     /// actually ticking — after a background gap there's simply no speed/MAF sample for the time
     /// that was missed, so that distance is honestly left untracked rather than guessed at.
-    private func updateTripComputer(speedKph: Double?, mafGramsPerSec: Double?, accumulateMotion: Bool) {
+    private func updateTripComputer(speedKph: Double?, obdSpeedKph: Double?, mafGramsPerSec: Double?, accumulateMotion: Bool) {
         let tickHours = (Double(Self.pollIntervalMs) / 1000.0) / 3600.0
         let elapsedSeconds = tripStartDate.map { Date().timeIntervalSince($0) } ?? 0
         state.standardReadings["tripDuration"] = String(format: "%.1f 分鐘", elapsedSeconds / 60.0)
 
         guard accumulateMotion else { return }
 
+        // Distance only needs *a* speed, GPS-fallback included — kept out from under the MAF
+        // guard below so it keeps accumulating through an OBD comm gap (MAF, mode 01 PID $10, is
+        // exclusively OBD-sourced and always nil during one) instead of freezing for the whole gap.
+        if let speedKph {
+            tripDistanceKm += speedKph * tickHours
+        }
+
         if let speedKph, let mafGramsPerSec {
             let fuelLitersPerHour = mafGramsPerSec * 3600.0 / (14.7 * 750.0)
-            tripDistanceKm += speedKph * tickHours
             // Idle fuel (stopped at a light, warming up) used to count toward the average here
             // even though it adds nothing to tripDistanceKm — burning fuel for zero km is exactly
             // what drags the average below what the car's own trip computer shows. Only fold fuel
@@ -464,19 +540,23 @@ final class DashboardController: ObservableObject {
             }
         }
 
-        // Real elapsed time since the last sample, not an assumed fixed pollIntervalMs — the very
-        // next tick after a background gap could be minutes after "previousSpeedKph" was captured,
-        // and dividing a real speed change by an assumed 0.2s would spike to a nonsense reading.
+        // Deliberately diffs `obdSpeedKph` (OBD only), not the GPS-fallback `speedKph` above — the
+        // two sources routinely disagree by a few km/h, and dividing that offset by a small dt
+        // (~0.2s) the instant the fallback kicks in or clears would read as a spurious hard-brake/
+        // acceleration spike. Real elapsed time since the last sample, not an assumed fixed
+        // pollIntervalMs, since the very next tick after a background gap could be minutes after
+        // "previousSpeedKph" was captured, and dividing a real speed change by an assumed 0.2s
+        // would spike to a nonsense reading the same way.
         let now = Date()
-        if let previous = previousSpeedKph, let speedKph, let previousDate = previousSpeedSampleDate {
+        if let previous = previousSpeedKph, let obdSpeedKph, let previousDate = previousSpeedSampleDate {
             let dt = now.timeIntervalSince(previousDate)
             if dt > 0 && dt < 2.0 {
-                let deltaMps = (speedKph - previous) / 3.6
+                let deltaMps = (obdSpeedKph - previous) / 3.6
                 let acceleration = deltaMps / dt
                 state.standardReadings["acceleration"] = String(format: "%.2f 米/秒²", acceleration)
             }
         }
-        previousSpeedKph = speedKph
+        previousSpeedKph = obdSpeedKph
         previousSpeedSampleDate = now
 
         state.standardReadings["tripDistance"] = String(format: "%.2f 公里", tripDistanceKm)
@@ -578,7 +658,32 @@ final class DashboardController: ObservableObject {
         if field == "runtimeSinceStartSec" {
             return formatHoursMinutes(seconds: value)
         }
+        if field == "gearRaw" {
+            return formatGear(value)
+        }
         return String(format: "%.1f %@", value, unit)
+    }
+
+    /// 0 = P（停車檔）, 7 = R（倒車檔）, confirmed by real-world testing on an automatic-gearbox
+    /// vehicle — see the field's own descriptionZh in citroen.json. 1–6 are the already-verified
+    /// forward gear numbers; N's raw value is still unconfirmed, so anything else just falls back
+    /// to the plain number rather than guessing.
+    private static func formatGear(_ value: Double) -> String {
+        switch Int(value.rounded()) {
+        case 0: return "P 檔"
+        case 7: return "R 檔（倒車）"
+        default: return String(format: "%.0f 檔", value)
+        }
+    }
+
+    /// Same 0/7 special-casing as `formatGear`, phrased for speech rather than for the on-screen
+    /// card — "已跳 0 檔"/"已跳 7 檔" read as nonsense spoken aloud where P/R make immediate sense.
+    private static func gearAnnouncement(for gear: Int) -> String {
+        switch gear {
+        case 0: return "P 檔"
+        case 7: return "倒車檔"
+        default: return "已跳\(gear)檔"
+        }
     }
 
     private static func formatHoursMinutes(seconds: Double) -> String {
@@ -605,7 +710,7 @@ final class DashboardController: ObservableObject {
             // The first reading after connecting just sets the baseline silently — there's
             // nothing to have "jumped" from yet.
             guard let previousGear, gear != previousGear else { return }
-            speechAnnouncer.speak("已跳\(gear)檔")
+            speechAnnouncer.speak(Self.gearAnnouncement(for: gear))
         default:
             break
         }

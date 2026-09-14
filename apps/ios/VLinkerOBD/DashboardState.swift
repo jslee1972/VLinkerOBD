@@ -50,14 +50,20 @@ struct DashboardState {
     var isTestingEcu: Bool = false
     /// Phone GPS-derived speed (km/h), shown alongside the OBD-reported speed for comparison.
     var gpsSpeedKph: Float?
-    /// Every field this profile setup could ever report — universal + trip computer + every
-    /// loaded brand profile's own fields — for the custom-section field picker.
-    var allKnownFields: [String] = []
-    /// Fields the user pinned into the dashboard's own custom section, persisted across launches.
-    var selectedCustomFields: Set<String> = []
+    /// Fields the user pinned into the dashboard's own custom section, in display order (an
+    /// ordered array, not a set, so the side panels' drag-to-reorder has a position to persist).
+    var selectedCustomFields: [String] = []
     /// The (at most 2) fields shown in the ring gauge's own center legend, persisted separately
     /// from `selectedCustomFields` — see `RingLegendFieldsStore`.
     var ringLegendFields: [String] = []
 
     var liveReadings: [String: String] { standardReadings.merging(extraReadings) { _, new in new } }
+
+    /// OBD speed when it's available, GPS speed when it isn't — the one place this fallback rule
+    /// is defined, so every consumer (trip computer, floating PiP window; the ring gauge's own
+    /// digit computes this itself from the same two sources) agrees on when "no OBD signal" means
+    /// "fall back to GPS" versus "show nothing."
+    var effectiveSpeedKph: Double? {
+        vehicleData.speedKph.map(Double.init) ?? gpsSpeedKph.map(Double.init)
+    }
 }

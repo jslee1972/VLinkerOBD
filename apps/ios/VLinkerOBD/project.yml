@@ -31,6 +31,10 @@ targets:
     info:
       path: Info.plist
       properties:
+        # The name shown under the icon on the Home Screen — distinct from the Xcode
+        # target/product name ("VLinkerOBD"), which stays as-is since it's just an internal
+        # identifier, not user-facing.
+        CFBundleDisplayName: "平安行車通"
         UILaunchScreen: {}
         # Landscape-only — 行車通 has one dashboard, meant to sit on a dash mount, not be held
         # portrait. `OrientationLock`/`AppDelegate` is what actually enforces this at runtime; this
@@ -55,13 +59,17 @@ targets:
         UIBackgroundModes:
           - bluetooth-central
           - audio
-        # Declares both scenes the app can host: the normal phone window (left to SwiftUI's own
-        # WindowGroup handling — no delegate class named here) and a CarPlay template scene backed
-        # by CarPlaySceneDelegate.swift. Declaring this costs nothing and changes no phone
-        # behavior — see that file's doc comment for why it still won't actually appear on a
-        # CarPlay head unit without Apple granting this app a CarPlay entitlement first (pick a
-        # category — this is a general dashboard, not navigation/parking/EV-charging-specific, so
-        # "Driving Task" is the most applicable one to request).
+        # Declares every scene the app can host: the normal phone window (left to SwiftUI's own
+        # WindowGroup handling — no delegate class named here), a CarPlay template scene backed
+        # by CarPlaySceneDelegate.swift (the app's own full-screen CarPlay UI), and a CarPlay
+        # Dashboard scene backed by CarPlayDashboardSceneDelegate.swift (a small supplementary
+        # panel shown alongside a *different*, main app like Google Maps — the mechanism apps like
+        # 神盾 use for their car-screen speed/alert strip). Declaring these costs nothing and
+        # changes no phone behavior — see those files' doc comments for why neither actually
+        # appears on a CarPlay head unit without Apple granting this app a CarPlay entitlement
+        # first (pick a category — this is a general dashboard, not navigation/parking/EV-charging-
+        # specific, so "Driving Task" is the most applicable one to request; Dashboard access is
+        # part of the same entitlement request, not a separate approval).
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: true
           UISceneConfigurations:
@@ -70,6 +78,9 @@ targets:
             CPTemplateApplicationSceneSessionRoleApplication:
               - UISceneConfigurationName: "CarPlay Configuration"
                 UISceneDelegateClassName: "$(PRODUCT_MODULE_NAME).CarPlaySceneDelegate"
+            CPTemplateApplicationDashboardSceneSessionRoleApplication:
+              - UISceneConfigurationName: "CarPlay Dashboard Configuration"
+                UISceneDelegateClassName: "$(PRODUCT_MODULE_NAME).CarPlayDashboardSceneDelegate"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.jslee1972.vlinkerobd

@@ -10,6 +10,12 @@ import UIKit
 /// unlike CarPlay, there is no Apple entitlement to request — only the `audio` background mode
 /// declared in project.yml, so this works the moment it ships, no external approval pending.
 ///
+/// Owned by `RootView`, not by `DrivingDynamicsDashboardView` — that view gets torn down and
+/// rebuilt (via `RootView.renderGeneration`'s `.id()`) on every app-resume and device rotation,
+/// which would otherwise silently orphan a live PiP session (leaked timer, no `stop()` call) the
+/// moment the user returned from Maps. Living on `RootView` instead means a PiP session survives
+/// exactly the transitions it exists to survive.
+///
 /// Simplified first version: shows just the current speed, at a modest 4fps (plenty for a number
 /// that changes a few times a second at most, and easy on battery). `AVSampleBufferDisplayLayer`
 /// needs to sit in the view hierarchy for PiP's start/stop animations to have something to
@@ -18,6 +24,10 @@ import UIKit
 @MainActor
 final class FloatingSpeedPiPController: NSObject, ObservableObject {
     @Published private(set) var isActive = false
+    /// Set when `start(with:)` can't proceed (e.g. PiP unsupported on this device/configuration)
+    /// — the menu button used to just silently do nothing in that case. The view clears this by
+    /// setting it back to nil once it's been shown.
+    @Published var lastError: String?
 
     private weak var controller: DashboardController?
     private let displayLayer = AVSampleBufferDisplayLayer()
@@ -26,14 +36,25 @@ final class FloatingSpeedPiPController: NSObject, ObservableObject {
     private var renderTimer: Timer?
     private var pixelBufferPool: CVPixelBufferPool?
     private var formatDescription: CMVideoFormatDescription?
+    private var renderer: ImageRenderer<FloatingSpeedView>?
     private var frameCount: Int64 = 0
 
     private let renderSize = CGSize(width: 320, height: 180)
     private let frameRate: Int32 = 4
 
+    deinit {
+        // `self` can't be touched here (deinit isn't actor-isolated even on a @MainActor class),
+        // but invalidating a Timer is a plain, thread-safe Foundation call — this is just a last
+        // safety net in case `stop()` was never called before the last strong reference dropped.
+        renderTimer?.invalidate()
+    }
+
     func start(with controller: DashboardController) {
         guard !isActive else { return }
-        guard AVPictureInPictureController.isPictureInPictureSupported() else { return }
+        guard AVPictureInPictureController.isPictureInPictureSupported() else {
+            lastError = "此裝置目前不支援子母畫面，無法開啟浮動車速視窗。"
+            return
+        }
         self.controller = controller
 
         installHostViewIfNeeded()
@@ -57,10 +78,23 @@ final class FloatingSpeedPiPController: NSObject, ObservableObject {
         isActive = true
     }
 
+    /// Only requests the stop — `pictureInPictureControllerDidStopPictureInPicture` is what
+    /// actually tears things down, once the system confirms the (animated, asynchronous) stop
+    /// has completed. Calling `teardown()` synchronously here too used to release `pipController`
+    /// and detach `hostView` from its window mid-animation, orphaning the dismiss animation and
+    /// then running the same cleanup a second time once the delegate callback landed regardless.
     func stop() {
+        pipController?.stopPictureInPicture()
+    }
+
+    /// The one place PiP-has-ended cleanup happens — see `stop()`'s doc comment for why it's only
+    /// ever called from the delegate callbacks below, never synchronously from `stop()` itself.
+    private func teardown() {
         renderTimer?.invalidate()
         renderTimer = nil
-        pipController?.stopPictureInPicture()
+        pipController = nil
+        renderer = nil
+        hostView.removeFromSuperview()
         isActive = false
     }
 
@@ -69,8 +103,10 @@ final class FloatingSpeedPiPController: NSObject, ObservableObject {
         hostView.frame = CGRect(x: 0, y: 0, width: 1, height: 1)
         hostView.isHidden = true
         hostView.isUserInteractionEnabled = false
-        displayLayer.frame = hostView.bounds
-        hostView.layer.addSublayer(displayLayer)
+        if displayLayer.superlayer == nil {
+            displayLayer.frame = hostView.bounds
+            hostView.layer.addSublayer(displayLayer)
+        }
         UIApplication.shared.connectedScenes
             .compactMap { ($0 as? UIWindowScene)?.windows.first }
             .first?
@@ -101,10 +137,23 @@ final class FloatingSpeedPiPController: NSObject, ObservableObject {
     private func renderFrame() {
         guard let controller, let pool = pixelBufferPool, let formatDescription, displayLayer.isReadyForMoreMediaData else { return }
 
-        let speedKph = controller.state.vehicleData.speedKph ?? controller.state.gpsSpeedKph.map(Int.init)
-        let renderer = ImageRenderer(content: FloatingSpeedView(speedKph: speedKph, size: renderSize))
-        renderer.scale = UIScreen.main.scale
-        guard let cgImage = renderer.cgImage else { return }
+        let speedKph = controller.state.effectiveSpeedKph.map { Int($0) }
+        // One `ImageRenderer` reused across every frame (only its `.content` changes) instead of
+        // constructing a fresh one 4 times a second — this view is meant to keep rendering for an
+        // entire drive, and rebuilding the whole SwiftUI render graph from scratch on every tick
+        // was avoidable sustained CPU/battery cost for a view whose only variation is one integer.
+        let view = FloatingSpeedView(speedKph: speedKph, size: renderSize)
+        let activeRenderer: ImageRenderer<FloatingSpeedView>
+        if let existing = renderer {
+            existing.content = view
+            activeRenderer = existing
+        } else {
+            let created = ImageRenderer(content: view)
+            created.scale = UIScreen.main.scale
+            renderer = created
+            activeRenderer = created
+        }
+        guard let cgImage = activeRenderer.cgImage else { return }
 
         var pixelBufferOut: CVPixelBuffer?
         CVPixelBufferPoolCreatePixelBuffer(nil, pool, &pixelBufferOut)
@@ -147,9 +196,19 @@ final class FloatingSpeedPiPController: NSObject, ObservableObject {
 
 extension FloatingSpeedPiPController: AVPictureInPictureControllerDelegate {
     func pictureInPictureControllerDidStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
-        isActive = false
-        renderTimer?.invalidate()
-        renderTimer = nil
+        teardown()
+    }
+
+    /// `start(with:)` sets `isActive = true` right after calling `startPictureInPicture()`, which
+    /// only *requests* the start — without handling this failure callback, a start that the
+    /// system rejects (any number of legitimate reasons: low memory, background app refresh off,
+    /// PiP still settling from a previous session) left `isActive` latched true with the render
+    /// timer running forever and no window ever appearing, and the `guard !isActive` at the top of
+    /// `start(with:)` blocked every retry — the user's only way out was toggling the (wrongly
+    /// labeled) "關閉浮動車速視窗" menu item.
+    func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
+        lastError = "子母畫面啟動失敗：\(error.localizedDescription)"
+        teardown()
     }
 }
 

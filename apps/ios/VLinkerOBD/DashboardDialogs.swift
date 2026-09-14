@@ -133,6 +133,18 @@ struct DiagnosticsView: View {
                             .disabled(command.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
 
+                    // One tap, no gap between steps — typing ATSH6A8/ATCRA688/22D409 in one at a
+                    // time left enough of a delay at driving speed for the bus to go idle before
+                    // the real request landed (that's what a "NO DATA" from a manually-typed probe
+                    // usually means, not that the value genuinely isn't there).
+                    Button {
+                        controller.probeGearRaw()
+                    } label: {
+                        Label("即時查詢檔位原始值（連續送出）", systemImage: "bolt.fill")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(!controller.state.isReady)
+
                     HStack {
                         Text("紀錄").font(.subheadline).foregroundStyle(.secondary)
                         Spacer()
@@ -225,37 +237,58 @@ struct EcuTestResultRow: View {
 
 /// Picks the (at most 2) fields shown next to the ring gauge's center readout — see
 /// `DashboardController.toggleRingLegendField`. Same list/grouping as `CustomFieldPickerView`,
-/// just capped at 2 selections instead of unbounded.
+/// just capped at 2 selections instead of unbounded — and scoped to
+/// `relevantFieldsForCurrentVehicle` rather than every loaded brand's fields, since with only 2
+/// slots, picking a field that belongs to some other brand's profile (and so can never report
+/// data for the connected vehicle) wastes half the legend on a permanent "--". Always includes
+/// whatever's already in `ringLegendFields` too, even if it falls outside the current vehicle's
+/// relevant set — otherwise a field picked while one brand was connected would vanish from this
+/// list (without ever being deselected) the moment a different brand connects, leaving it stuck
+/// in the legend with no way to uncheck it short of picking two new fields to FIFO-evict it.
 struct RingLegendFieldPickerView: View {
     @EnvironmentObject var controller: DashboardController
     @Environment(\.dismiss) private var dismiss
 
+    private let columns = [GridItem(.flexible(), spacing: 16, alignment: .leading), GridItem(.flexible(), alignment: .leading)]
+
     var body: some View {
         NavigationStack {
-            let grouped = Dictionary(grouping: controller.state.allKnownFields) { controller.parameterMetadata.groupFor($0) }
-            List {
-                Section {
+            let selectableFields = Set(controller.relevantFieldsForCurrentVehicle).union(controller.state.ringLegendFields)
+            let grouped = Dictionary(grouping: Array(selectableFields)) { controller.parameterMetadata.groupFor($0) }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
                     Text("選 2 個顯示在中央圓環旁——再點第 3 個會換掉最先選的那個。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                }
-                ForEach(ParameterGroups.displayOrder, id: \.self) { group in
-                    if let fields = grouped[group]?.sorted() {
-                        Section(group) {
-                            ForEach(fields, id: \.self) { field in
-                                Button {
-                                    controller.toggleRingLegendField(field)
-                                } label: {
-                                    HStack {
-                                        Image(systemName: controller.state.ringLegendFields.contains(field) ? "checkmark.square.fill" : "square")
-                                        Text(controller.parameterMetadata.displayName(field))
+                    ForEach(ParameterGroups.displayOrder, id: \.self) { group in
+                        if let fields = grouped[group]?.sorted() {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(group).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                                // Two columns, smaller text — one column of full-size rows meant
+                                // scrolling through a long single-file list to find a field; this
+                                // fits roughly twice as many on screen at once.
+                                LazyVGrid(columns: columns, alignment: .leading, spacing: 10) {
+                                    ForEach(fields, id: \.self) { field in
+                                        Button {
+                                            controller.toggleRingLegendField(field)
+                                        } label: {
+                                            HStack(spacing: 6) {
+                                                Image(systemName: controller.state.ringLegendFields.contains(field) ? "checkmark.square.fill" : "square")
+                                                    .font(.caption)
+                                                Text(controller.parameterMetadata.displayName(field))
+                                                    .font(.caption)
+                                                    .lineLimit(1)
+                                                    .minimumScaleFactor(0.8)
+                                            }
+                                        }
+                                        .buttonStyle(.plain)
                                     }
                                 }
-                                .buttonStyle(.plain)
                             }
                         }
                     }
                 }
+                .padding()
             }
             .navigationTitle("選擇中央顯示參數")
             .toolbar {
@@ -270,34 +303,57 @@ struct CustomFieldPickerView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var infoField: String?
 
+    private let columns = [GridItem(.flexible(), spacing: 16, alignment: .leading), GridItem(.flexible(), alignment: .leading)]
+
     var body: some View {
         NavigationStack {
-            let grouped = Dictionary(grouping: controller.state.allKnownFields) { controller.parameterMetadata.groupFor($0) }
-            List {
-                ForEach(ParameterGroups.displayOrder, id: \.self) { group in
-                    if let fields = grouped[group]?.sorted() {
-                        Section(group) {
-                            ForEach(fields, id: \.self) { field in
-                                HStack {
-                                    Button {
-                                        controller.toggleCustomField(field)
-                                    } label: {
-                                        HStack {
-                                            Image(systemName: controller.state.selectedCustomFields.contains(field) ? "checkmark.square.fill" : "square")
-                                            Text(controller.parameterMetadata.displayName(field))
+            // Scoped to the current vehicle (universal + the detected/selected brand's own
+            // fields), same as the ring legend picker — `allKnownFields` is every loaded brand's
+            // fields regardless of what's actually connected, so without this a Honda would still
+            // list Mazda/Ford/Citroën-only PIDs that can never report data. Always includes
+            // whatever's already selected too, so a field picked under one brand doesn't vanish
+            // (with no way to deselect it) the moment a different brand connects.
+            let selectableFields = Set(controller.relevantFieldsForCurrentVehicle).union(controller.state.selectedCustomFields)
+            let grouped = Dictionary(grouping: Array(selectableFields)) { controller.parameterMetadata.groupFor($0) }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    ForEach(ParameterGroups.displayOrder, id: \.self) { group in
+                        if let fields = grouped[group]?.sorted() {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(group).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                                // Two columns, smaller text — one column of full-size rows meant
+                                // scrolling through a long single-file list to find a field; this
+                                // fits roughly twice as many on screen at once.
+                                LazyVGrid(columns: columns, alignment: .leading, spacing: 10) {
+                                    ForEach(fields, id: \.self) { field in
+                                        HStack(spacing: 4) {
+                                            Button {
+                                                controller.toggleCustomField(field)
+                                            } label: {
+                                                HStack(spacing: 6) {
+                                                    Image(systemName: controller.state.selectedCustomFields.contains(field) ? "checkmark.square.fill" : "square")
+                                                        .font(.caption)
+                                                    Text(controller.parameterMetadata.displayName(field))
+                                                        .font(.caption)
+                                                        .lineLimit(1)
+                                                        .minimumScaleFactor(0.8)
+                                                }
+                                            }
+                                            .buttonStyle(.plain)
+                                            Spacer(minLength: 0)
+                                            Button { infoField = field } label: {
+                                                Image(systemName: "info.circle")
+                                                    .font(.caption)
+                                            }
+                                            .buttonStyle(.plain)
                                         }
                                     }
-                                    .buttonStyle(.plain)
-                                    Spacer()
-                                    Button { infoField = field } label: {
-                                        Image(systemName: "info.circle")
-                                    }
-                                    .buttonStyle(.plain)
                                 }
                             }
                         }
                     }
                 }
+                .padding()
             }
             .navigationTitle("選擇自訂區塊參數")
             .toolbar {
