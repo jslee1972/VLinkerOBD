@@ -145,6 +145,19 @@ struct DiagnosticsView: View {
                     .buttonStyle(.bordered)
                     .disabled(!controller.state.isReady)
 
+                    // Same back-to-back pattern, probing all 4 tyre-pressure DIDs at once — these
+                    // have never returned data; a NO DATA vs. a timeout tells apart "wrong DID" vs.
+                    // "this module probably isn't fitted to this car" (see the driving-dynamics
+                    // side panel discussion — the workshop manual documents tyre under-inflation
+                    // detection as an optional fitment on some trims).
+                    Button {
+                        controller.probeTirePressures()
+                    } label: {
+                        Label("即時查詢胎壓原始值（連續送出）", systemImage: "bolt.fill")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(!controller.state.isReady)
+
                     HStack {
                         Text("紀錄").font(.subheadline).foregroundStyle(.secondary)
                         Spacer()

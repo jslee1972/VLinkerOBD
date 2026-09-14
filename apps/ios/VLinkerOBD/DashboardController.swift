@@ -316,6 +316,16 @@ final class DashboardController: ObservableObject {
         sendCommandSequence(["ATSH6A8", "ATCRA688", "22D409", "ATCRA", "ATSH7DF"])
     }
 
+    /// Same one-tap pattern as `probeGearRaw`, but for the 4 tire-pressure DIDs — these have never
+    /// returned data at all, and unlike the engine-ECU PIDs (header `6A8`) they go through a
+    /// separate module (header `6AF`, the tyre under-inflation detection ECU) that the vehicle's
+    /// own workshop manual documents as an *optional* fitment on some trims. A `NO DATA` reply
+    /// here means the module is present but these specific DIDs are wrong for it; a timeout on all
+    /// four means there's likely no such module on the bus at all.
+    func probeTirePressures() {
+        sendCommandSequence(["ATSH6AF", "ATCRA68F", "22D610", "22D60F", "22D612", "22D611", "ATCRA", "ATSH7DF"])
+    }
+
     // MARK: Initialization
 
     private func startInitialization() async {
@@ -682,7 +692,7 @@ final class DashboardController: ObservableObject {
         switch gear {
         case 0: return "P 檔"
         case 7: return "倒車檔"
-        default: return "已跳\(gear)檔"
+        default: return "\(gear)檔"
         }
     }
 
