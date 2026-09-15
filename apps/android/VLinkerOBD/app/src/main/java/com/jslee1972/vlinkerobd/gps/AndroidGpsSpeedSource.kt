@@ -29,12 +29,26 @@ class AndroidGpsSpeedSource(private val context: Context) : GpsSpeedSource {
 
     private var listening = false
 
-    private val listener = LocationListener { location: Location ->
-        // Not every fix carries a speed reading (e.g. the very first fix after a cold start) —
-        // skip those rather than overwriting a good reading with a stale/absent one.
-        if (location.hasSpeed()) {
-            _speedKph.value = location.speed * 3.6f
+    // Deliberately NOT the single-lambda SAM-conversion form (`LocationListener { location -> ... }`)
+    // — that relies on the platform's LocationListener interface providing default no-op bodies
+    // for onStatusChanged/onProviderEnabled/onProviderDisabled (added around API 31), which some
+    // OEM framework builds (confirmed on a real OPPO/ColorOS device here) don't actually carry
+    // despite reporting a high enough SDK level, throwing AbstractMethodError the instant the
+    // framework calls one of those three. Implementing all four explicitly, even as no-ops, means
+    // this class's bytecode always has a real method body regardless of the runtime's default-
+    // method support.
+    private val listener = object : LocationListener {
+        override fun onLocationChanged(location: Location) {
+            // Not every fix carries a speed reading (e.g. the very first fix after a cold start)
+            // — skip those rather than overwriting a good reading with a stale/absent one.
+            if (location.hasSpeed()) {
+                _speedKph.value = location.speed * 3.6f
+            }
         }
+
+        override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) = Unit
+        override fun onProviderEnabled(provider: String) = Unit
+        override fun onProviderDisabled(provider: String) = Unit
     }
 
     override fun start() {

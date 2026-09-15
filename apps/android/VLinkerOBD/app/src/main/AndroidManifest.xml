@@ -7,8 +7,12 @@
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
     <!-- Not capped to maxSdkVersion 30 like the BLE-scan-adjacent grant used to be: GPS speed
          comparison (see gps/AndroidGpsSpeedSource) needs real location access on every Android
-         version, not just as a side effect of pre-12 BLE scanning. -->
+         version, not just as a side effect of pre-12 BLE scanning. ACCESS_COARSE_LOCATION is
+         declared alongside it (and requested together in MainActivity) only because Android 12+
+         requires both to be present for the FINE grant dialog to show correctly — the app still
+         needs an actual FINE grant, since GPS_PROVIDER doesn't work off coarse/network location. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
 
@@ -17,19 +21,32 @@
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
-        android:label="行車通"
+        android:label="平安行車通"
         android:supportsRtl="true"
         android:theme="@style/Theme.VLinkerOBD">
-        <!-- Locked portrait: rotating triggered an Activity recreation that re-ran the BLE
-             auto-connect LaunchedEffect while a connection was already active, corrupting
-             connection state (reported as a crash + BLE disconnect on rotation). The gauge
-             dashboard is portrait-only by design anyway (see DashboardScreen's side-by-side
-             gauge layout), so locking orientation avoids the whole class of bug rather than
-             building a real landscape layout that hasn't been asked for. -->
+        <!-- Rotation used to be locked to portrait: rotating triggered an Activity recreation
+             that re-ran the BLE auto-connect LaunchedEffect while a connection was already
+             active, corrupting connection state (reported as a crash + BLE disconnect on
+             rotation). configChanges below (originally added for the PiP window) declares that
+             orientation/screen-size changes are handled in place instead of recreating the
+             Activity, which was the actual root cause — with that in place, the Activity, its
+             Compose composition, and the one-shot LaunchedEffect all survive a rotation
+             untouched, which is what makes the landscape lock below safe.
+
+             Locked to landscape (sensorLandscape — either landscape rotation, however the phone
+             is physically mounted, but never portrait): matches iOS's own move to a landscape-only
+             driving-dynamics dashboard (see MainActivity's DrivingDynamicsDashboardScreen, ported
+             from iOS's DrivingDynamicsDashboardView) — this app now has exactly one screen, the
+             ring-gauge layout, same as iOS.
+
+             The floating speed PiP window (see MainActivity.enterSpeedPipMode/PipSpeedView) needs
+             supportsPictureInPicture to opt the Activity into the system PiP tray. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:screenOrientation="portrait">
+            android:screenOrientation="sensorLandscape"
+            android:supportsPictureInPicture="true"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|uiMode">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

@@ -7,6 +7,7 @@ import com.jslee1972.vlinkerobd.ble.ScannedBleDevice
 import com.jslee1972.vlinkerobd.gps.GpsSpeedSource
 import com.jslee1972.vlinkerobd.obd.PidDefinition
 import com.jslee1972.vlinkerobd.obd.VehicleProfile
+import com.jslee1972.vlinkerobd.speech.SpeechAnnouncer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -61,6 +62,12 @@ private class FakeBleObdClient : BleObdClient {
         connectionStateFlow.value = ConnectionState.READY
     }
 
+    /** Simulates a transient BLE dropout (e.g. a service-discovery watchdog giving up) that the
+     * ViewModel is expected to auto-recover from, as opposed to a user-initiated disconnect(). */
+    fun simulateErrorDisconnect() {
+        connectionStateFlow.value = ConnectionState.DISCONNECTED_AFTER_ERROR
+    }
+
     fun emitDevices(devices: List<ScannedBleDevice>) {
         devicesFlow.value = devices
     }
@@ -75,13 +82,25 @@ private class FakeDeviceMemory(private var address: String? = null) : DeviceMemo
     }
 }
 
-private class FakeCustomSectionStore(initial: Set<String> = emptySet()) : CustomSectionStore {
+private class FakeCustomSectionStore(initial: List<String> = emptyList()) : CustomSectionStore {
     private var fields = initial
-    val savedCalls = mutableListOf<Set<String>>()
+    val savedCalls = mutableListOf<List<String>>()
 
-    override fun selectedFields(): Set<String> = fields
+    override fun selectedFields(): List<String> = fields
 
-    override fun setSelectedFields(fields: Set<String>) {
+    override fun setSelectedFields(fields: List<String>) {
+        this.fields = fields
+        savedCalls += fields
+    }
+}
+
+private class FakeRingLegendFieldsStore(initial: List<String> = emptyList()) : RingLegendFieldsStore {
+    private var fields = initial
+    val savedCalls = mutableListOf<List<String>>()
+
+    override fun fields(): List<String> = fields
+
+    override fun setFields(fields: List<String>) {
         this.fields = fields
         savedCalls += fields
     }
@@ -104,6 +123,13 @@ private class FakeGpsSpeedSource : GpsSpeedSource {
 
     fun emit(speed: Float?) {
         _speedKph.value = speed
+    }
+}
+
+private class FakeSpeechAnnouncer : SpeechAnnouncer {
+    val spoken = mutableListOf<String>()
+    override fun speak(text: String) {
+        spoken += text
     }
 }
 
@@ -242,7 +268,7 @@ class DashboardViewModelTest {
     @Test
     fun loadsAndPersistsCustomSectionFieldSelection() = runTest(dispatcher) {
         val client = FakeBleObdClient()
-        val store = FakeCustomSectionStore(initial = setOf("coolantTempC"))
+        val store = FakeCustomSectionStore(initial = listOf("coolantTempC"))
         val hondaProfile = VehicleProfile(
             profileId = "honda",
             brand = "Honda",
@@ -258,19 +284,128 @@ class DashboardViewModelTest {
         runCurrent()
 
         // Initial selection loaded from the store.
-        assertEquals(setOf("coolantTempC"), viewModel.uiState.value.selectedCustomFields)
-        // Known fields include universal + trip computer + every loaded brand's own fields.
-        assertTrue("speedKPH" in viewModel.uiState.value.allKnownFields)
-        assertTrue("batteryVoltage" in viewModel.uiState.value.allKnownFields)
+        assertEquals(listOf("coolantTempC"), viewModel.uiState.value.selectedCustomFields)
+        // Known fields include trip-computer fields regardless of brand...
         assertTrue("instantFuelConsumption" in viewModel.uiState.value.allKnownFields)
+        // ...but not speedKPH/rpm — these are read straight into vehicleData/trip-computer state
+        // by the dedicated fast loop, never into standardReadings/extraReadings, so picking them
+        // here would only ever show "--" forever (the ring gauge already displays both).
+        assertTrue("speedKPH" !in viewModel.uiState.value.allKnownFields)
+        assertTrue("rpm" !in viewModel.uiState.value.allKnownFields)
+        // ...and not a brand's own PIDs before that brand is actually selected/detected — showing
+        // every loaded brand's fields up front would clutter the picker with entries the
+        // (still-unidentified) connected vehicle can never actually answer.
+        assertTrue("batteryVoltage" !in viewModel.uiState.value.allKnownFields)
+
+        viewModel.selectBrand("Honda")
+        assertTrue("batteryVoltage" in viewModel.uiState.value.allKnownFields)
 
         viewModel.toggleCustomField("rpm")
-        assertEquals(setOf("coolantTempC", "rpm"), viewModel.uiState.value.selectedCustomFields)
-        assertEquals(setOf("coolantTempC", "rpm"), store.savedCalls.last())
+        assertEquals(listOf("coolantTempC", "rpm"), viewModel.uiState.value.selectedCustomFields)
+        assertEquals(listOf("coolantTempC", "rpm"), store.savedCalls.last())
 
         viewModel.toggleCustomField("coolantTempC")
-        assertEquals(setOf("rpm"), viewModel.uiState.value.selectedCustomFields)
-        assertEquals(setOf("rpm"), store.savedCalls.last())
+        assertEquals(listOf("rpm"), viewModel.uiState.value.selectedCustomFields)
+        assertEquals(listOf("rpm"), store.savedCalls.last())
+
+        viewModel.clearAllCustomFields()
+        assertEquals(emptyList<String>(), viewModel.uiState.value.selectedCustomFields)
+        assertEquals(emptyList<String>(), store.savedCalls.last())
+    }
+
+    @Test
+    fun movesCustomFieldBeforeTarget() = runTest(dispatcher) {
+        val client = FakeBleObdClient()
+        val store = FakeCustomSectionStore(initial = listOf("a", "b", "c", "d"))
+        val viewModel = DashboardViewModel(client, universalProfile, externalScope = backgroundScope, customSectionStore = store)
+        runCurrent()
+
+        viewModel.moveCustomField("d", "b")
+        assertEquals(listOf("a", "d", "b", "c"), viewModel.uiState.value.selectedCustomFields)
+        assertEquals(listOf("a", "d", "b", "c"), store.savedCalls.last())
+
+        // A no-op if the field isn't actually pinned or the target doesn't exist.
+        viewModel.moveCustomField("not_pinned", "b")
+        viewModel.moveCustomField("a", "also_not_pinned")
+        assertEquals(listOf("a", "d", "b", "c"), viewModel.uiState.value.selectedCustomFields)
+
+        // A no-op dropping a card on itself.
+        viewModel.moveCustomField("a", "a")
+        assertEquals(listOf("a", "d", "b", "c"), viewModel.uiState.value.selectedCustomFields)
+    }
+
+    @Test
+    fun capsCustomFieldsAtEightWithFifoEviction() = runTest(dispatcher) {
+        val client = FakeBleObdClient()
+        val store = FakeCustomSectionStore(initial = listOf("f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8"))
+        val viewModel = DashboardViewModel(client, universalProfile, externalScope = backgroundScope, customSectionStore = store)
+        runCurrent()
+
+        // Selecting a 9th field bumps the oldest (f1) out instead of silently appending past what
+        // the side panel ever displays (8 slots, 4 per side) — appending unbounded made a newly
+        // checked field invisible once 8 were already selected.
+        viewModel.toggleCustomField("f9")
+        assertEquals(listOf("f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9"), viewModel.uiState.value.selectedCustomFields)
+        assertEquals(listOf("f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9"), store.savedCalls.last())
+
+        // Deselecting one of the 8 doesn't trigger eviction logic — it's just a removal.
+        viewModel.toggleCustomField("f5")
+        assertEquals(listOf("f2", "f3", "f4", "f6", "f7", "f8", "f9"), viewModel.uiState.value.selectedCustomFields)
+    }
+
+    @Test
+    fun excludesFastLoopAndDeadTireFieldsFromKnownFields() = runTest(dispatcher) {
+        val client = FakeBleObdClient()
+        val citroenProfile = VehicleProfile(
+            profileId = "citroen",
+            brand = "Citroen",
+            pids = listOf(
+                PidDefinition(request = "22D60B", field = "tireFrontLeftPressureBar", unit = "bar", formula = "A"),
+                PidDefinition(request = "22D40A", field = "someOtherCitroenField", unit = "V", formula = "A"),
+            ),
+        )
+        val viewModel = DashboardViewModel(
+            client,
+            universalProfile,
+            mapOf("Citroen" to citroenProfile),
+            externalScope = backgroundScope,
+        )
+        runCurrent()
+        viewModel.selectBrand("Citroen")
+
+        val knownFields = viewModel.uiState.value.allKnownFields
+        // speedKPH/rpm/mafGramsPerSec are read straight into vehicleData/trip-computer state by
+        // the dedicated fast loop, never into standardReadings/extraReadings — picking them into
+        // the custom section or ring legend would only ever show "--" forever.
+        assertTrue("speedKPH" !in knownFields)
+        assertTrue("rpm" !in knownFields)
+        // Confirmed dead on this vehicle (NO DATA on every attempt) — see UNAVAILABLE_TIRE_FIELDS.
+        assertTrue("tireFrontLeftPressureBar" !in knownFields)
+        // An ordinary brand field is unaffected by either exclusion.
+        assertTrue("someOtherCitroenField" in knownFields)
+    }
+
+    @Test
+    fun cleansStoredDeadTireFieldsOnLoad() = runTest(dispatcher) {
+        val client = FakeBleObdClient()
+        val customStore = FakeCustomSectionStore(initial = listOf("coolantTempC", "tireFrontLeftPressureBar"))
+        val ringLegendStore = FakeRingLegendFieldsStore(initial = listOf("tireRearRightTempC", "fuelLevelPercent"))
+        val viewModel = DashboardViewModel(
+            client,
+            universalProfile,
+            externalScope = backgroundScope,
+            customSectionStore = customStore,
+            ringLegendFieldsStore = ringLegendStore,
+        )
+        runCurrent()
+
+        // The dead tire field is dropped from the live state immediately on load...
+        assertEquals(listOf("coolantTempC"), viewModel.uiState.value.selectedCustomFields)
+        assertEquals(listOf("fuelLevelPercent"), viewModel.uiState.value.ringLegendFields)
+        // ...and the cleaned-up list is persisted back, not just filtered for display, so the dead
+        // entry doesn't keep reappearing to be re-cleaned on every launch.
+        assertEquals(listOf("coolantTempC"), customStore.selectedFields())
+        assertEquals(listOf("fuelLevelPercent"), ringLegendStore.fields())
     }
 
     @Test
@@ -328,6 +463,299 @@ class DashboardViewModelTest {
         // idle-specific gauges on reference dashboards label this same quantity.
         client.respondToNextWrite("41 10 27 10\r>") // MAF -> 100.0 g/s -> 32.65 L/h
         assertEquals("32.65 公升/小時", viewModel.uiState.value.standardReadings["instantFuelConsumption"])
+    }
+
+    private fun DashboardViewModel.tripDistanceKm(): Double =
+        uiState.value.standardReadings.getValue("tripDistance").removeSuffix(" 公里").toDouble()
+
+    /** Drives 30 fast-loop ticks at a constant speed/MAF so tripDistance accumulates well above
+     * what a single fresh post-reset tick would produce (~0.0033 km) — see the two tests below. */
+    private suspend fun FakeBleObdClient.driveThirtyFastLoopTicks() {
+        var lastAnswered = ""
+        var mafTicks = 0
+        var guard = 0
+        while (mafTicks < 30) {
+            check(++guard < 5_000) { "drive loop did not converge" }
+            dispatcher.scheduler.runCurrent()
+            val pending = writes.lastOrNull() ?: ""
+            if (pending == lastAnswered) {
+                dispatcher.scheduler.advanceTimeBy(200)
+                continue
+            }
+            lastAnswered = pending
+            when (pending) {
+                "010C\r" -> respond("41 0C 00 00\r>")
+                "010D\r" -> respond("41 0D 3C\r>") // 60 km/h
+                "0110\r" -> {
+                    mafTicks++
+                    respond("41 10 27 10\r>") // 100.0 g/s
+                }
+            }
+            dispatcher.scheduler.runCurrent()
+        }
+    }
+
+    @Test
+    fun tripDistanceFallsBackToGpsSpeedWhileObdSpeedIsStale() = runTest(dispatcher) {
+        val client = FakeBleObdClient()
+        val fakeGps = FakeGpsSpeedSource()
+        val viewModel = DashboardViewModel(client, universalProfile, externalScope = backgroundScope, gpsSpeedSource = fakeGps)
+
+        client.completeInitAndSkipVin() // leaves an in-flight rpm poll
+        fakeGps.emit(80f) // GPS has a fix throughout, independent of the OBD connection
+
+        // Fail the OBD speed poll STALE_THRESHOLD (5) times in a row so vehicleData.speedKph goes
+        // null, the same signal-gap condition the GPS fallback exists for.
+        var lastAnswered = ""
+        var speedFailures = 0
+        var guard = 0
+        while (speedFailures < 5) {
+            check(++guard < 5_000) { "drive loop did not converge" }
+            runCurrent()
+            val pending = client.writes.lastOrNull() ?: ""
+            if (pending == lastAnswered) {
+                dispatcher.scheduler.advanceTimeBy(200)
+                continue
+            }
+            lastAnswered = pending
+            when (pending) {
+                "010C\r" -> client.respond("41 0C 00 00\r>")
+                "010D\r" -> {
+                    speedFailures++
+                    client.respond("NO DATA\r>")
+                }
+            }
+            runCurrent()
+        }
+        assertEquals(null, viewModel.uiState.value.vehicleData.speedKph)
+        val distanceOnceObdWentStale = viewModel.tripDistanceKm()
+
+        // Keep driving while OBD speed stays unanswered — distance must still grow from GPS.
+        repeat(10) {
+            runCurrent()
+            when (client.writes.lastOrNull()) {
+                "010C\r" -> client.respond("41 0C 00 00\r>")
+                "010D\r" -> client.respond("NO DATA\r>")
+            }
+            dispatcher.scheduler.advanceTimeBy(200)
+            runCurrent()
+        }
+
+        assertTrue(
+            "trip distance should keep accumulating from GPS while OBD speed is stale, was $distanceOnceObdWentStale, now ${viewModel.tripDistanceKm()}",
+            viewModel.tripDistanceKm() > distanceOnceObdWentStale,
+        )
+    }
+
+    @Test
+    fun formatsParkAndReverseGearsSpecially() = runTest(dispatcher) {
+        val client = FakeBleObdClient()
+        val citroenProfile = VehicleProfile(
+            profileId = "citroen",
+            brand = "Citroen",
+            pids = listOf(
+                PidDefinition(request = "22D409", field = "gearRaw", unit = "檔", formula = "A", fastPoll = true),
+            ),
+        )
+        val viewModel = DashboardViewModel(
+            client,
+            universalProfile,
+            mapOf("Citroen" to citroenProfile),
+            externalScope = backgroundScope,
+        )
+
+        client.setReady()
+        runCurrent()
+        repeat(8) { client.respondToNextWrite(">") } // cascades into the "0902" VIN request
+        client.respondToNextWrite("49 02 01 56 46 37 41 42 43 44 45 46 47 48 31 32 33 34 35 36\r>") // VIN VF7...
+        client.respondToNextWrite("43 00\r>") // automatic DTC read, no codes
+
+        // Drives generically until exactly `n` more gear queries have completed, answering the
+        // n-th one with `gearHex` (every one before it with a neutral "03" so only the field's
+        // final state after `n` queries is meaningful) — lets each assertion below inspect the
+        // state right after one specific gear change instead of only the final value.
+        //
+        // `lastAnswered` is shared across every call, not reset per call: the gear PID's request
+        // string ("22D409\r") is identical on every poll, so the only way to tell "already
+        // answered, ticker just hasn't sent the next one yet" apart from "a genuinely new
+        // occurrence" is noticing the fast loop's rpm/speed writes land in between and change what
+        // `client.writes.last()` is — resetting to "" at the start of a call would treat that
+        // still-pending-response leftover write as brand new and double-answer it.
+        var lastAnswered = ""
+        suspend fun driveUntilNthGearQuery(n: Int, gearHex: String) {
+            var gearQueries = 0
+            var guard = 0
+            while (gearQueries < n) {
+                check(++guard < 5_000) { "drive loop did not converge" }
+                runCurrent()
+                val pending = client.writes.lastOrNull() ?: ""
+                if (pending == lastAnswered) {
+                    dispatcher.scheduler.advanceTimeBy(20)
+                    continue
+                }
+                lastAnswered = pending
+                when (pending) {
+                    "22D409\r" -> {
+                        gearQueries++
+                        val raw = if (gearQueries == n) gearHex else "03"
+                        client.respond("62 D4 09 $raw\r>")
+                    }
+                    "010C\r" -> client.respond("41 0C 00 00\r>")
+                    "010D\r" -> client.respond("41 0D 00\r>")
+                }
+                runCurrent()
+            }
+        }
+
+        driveUntilNthGearQuery(1, "00") // baseline reading: P
+        assertEquals("P 檔", viewModel.uiState.value.extraReadings["gearRaw"])
+
+        driveUntilNthGearQuery(1, "07") // change to R
+        assertEquals("R 檔（倒車）", viewModel.uiState.value.extraReadings["gearRaw"])
+
+        driveUntilNthGearQuery(1, "00") // change back to P
+        assertEquals("P 檔", viewModel.uiState.value.extraReadings["gearRaw"])
+    }
+
+    @Test
+    fun autoReconnectAfterBleDropoutPreservesTripComputer() = runTest(dispatcher) {
+        val client = FakeBleObdClient()
+        val profileWithMaf = universalProfile.copy(
+            pids = universalProfile.pids +
+                PidDefinition(request = "0110", field = "mafGramsPerSec", unit = "g/s", formula = "((A*256)+B)/100"),
+        )
+        val viewModel = DashboardViewModel(client, profileWithMaf, externalScope = backgroundScope)
+
+        client.completeInitAndSkipVin() // leaves an in-flight rpm poll
+        client.driveThirtyFastLoopTicks()
+
+        val distanceBeforeDropout = viewModel.tripDistanceKm()
+        assertTrue("expected meaningful accumulated distance, got $distanceBeforeDropout", distanceBeforeDropout > 0.05)
+
+        // A transient BLE dropout that auto-reconnects (DISCONNECTED_AFTER_ERROR -> rescans ->
+        // READY again) must not be treated like a fresh connection.
+        client.simulateErrorDisconnect()
+        runCurrent()
+        client.completeInitAndSkipVin()
+
+        client.respondToNextWrite("41 0C 00 00\r>")
+        client.respondToNextWrite("41 0D 3C\r>")
+        client.respondToNextWrite("41 10 27 10\r>")
+
+        assertTrue(
+            "trip distance should keep accumulating across a dropout/auto-reconnect, not reset (was $distanceBeforeDropout, now ${viewModel.tripDistanceKm()})",
+            viewModel.tripDistanceKm() >= distanceBeforeDropout,
+        )
+    }
+
+    @Test
+    fun explicitDisconnectResetsTripComputerOnNextConnect() = runTest(dispatcher) {
+        val client = FakeBleObdClient()
+        val profileWithMaf = universalProfile.copy(
+            pids = universalProfile.pids +
+                PidDefinition(request = "0110", field = "mafGramsPerSec", unit = "g/s", formula = "((A*256)+B)/100"),
+        )
+        val viewModel = DashboardViewModel(client, profileWithMaf, externalScope = backgroundScope)
+
+        client.completeInitAndSkipVin()
+        client.driveThirtyFastLoopTicks()
+        assertTrue(viewModel.tripDistanceKm() > 0.05)
+
+        viewModel.disconnect()
+        runCurrent()
+        client.completeInitAndSkipVin()
+
+        client.respondToNextWrite("41 0C 00 00\r>")
+        client.respondToNextWrite("41 0D 3C\r>")
+        client.respondToNextWrite("41 10 27 10\r>")
+
+        // A single fresh tick's worth of distance (~0.003 km at 60 km/h/200ms) is nowhere near the
+        // ~0.1 km accumulated before the user explicitly disconnected — proves the trip reset.
+        assertTrue(
+            "trip distance should reset after an explicit disconnect, was ${viewModel.tripDistanceKm()}",
+            viewModel.tripDistanceKm() < 0.01,
+        )
+    }
+
+    @Test
+    fun announcesBatteryVoltageOncePerConnection() = runTest(dispatcher) {
+        val client = FakeBleObdClient()
+        val profileWithVoltage = universalProfile.copy(
+            pids = universalProfile.pids +
+                PidDefinition(request = "0142", field = "controlModuleVoltage", unit = "V", formula = "((A*256)+B)/1000"),
+        )
+        val announcer = FakeSpeechAnnouncer()
+        DashboardViewModel(client, profileWithVoltage, externalScope = backgroundScope, speechAnnouncer = announcer)
+
+        client.completeInitAndSkipVin() // leaves an in-flight rpm poll; the voltage poll is queued behind it
+
+        client.respondToNextWrite("41 0C 00 00\r>") // completes rpm poll, cascades into the queued voltage poll
+        assertEquals("0142\r", client.writes.last())
+
+        client.respondToNextWrite("41 42 31 68\r>") // 0x3168/1000 = 12.648 V
+        assertEquals(listOf("電池電壓 12.6 伏特"), announcer.spoken)
+
+        // Drive the queue generically through a second full voltage-ticker cycle (see
+        // stopsPollingStandardExtraPidPermanentlyAfterRepeatedFailures for why) — a repeat reading
+        // must not announce the voltage again this connection.
+        var lastAnswered = ""
+        var guard = 0
+        while (client.writes.count { it == "0142\r" } < 2) {
+            check(++guard < 5_000) { "drive loop did not converge" }
+            runCurrent()
+            val pending = client.writes.lastOrNull() ?: ""
+            if (pending == lastAnswered) {
+                dispatcher.scheduler.advanceTimeBy(50)
+                continue
+            }
+            lastAnswered = pending
+            when (pending) {
+                "0142\r" -> client.respond("41 42 31 68\r>")
+                "010C\r" -> client.respond("41 0C 00 00\r>")
+                "010D\r" -> client.respond("41 0D 00\r>")
+            }
+            runCurrent()
+        }
+
+        assertEquals(1, announcer.spoken.size)
+    }
+
+    @Test
+    fun announcesSpeedThresholdCrossingsOncePerExcursion() = runTest(dispatcher) {
+        val client = FakeBleObdClient()
+        val announcer = FakeSpeechAnnouncer()
+        val viewModel = DashboardViewModel(client, universalProfile, externalScope = backgroundScope, speechAnnouncer = announcer)
+
+        client.completeInitAndSkipVin() // leaves an in-flight rpm poll
+
+        suspend fun tick(speedKph: Int) {
+            client.respondToNextWrite("41 0C 00 00\r>") // rpm, cascades into the speed poll
+            client.respondToNextWrite("41 0D %02X\r>".format(speedKph))
+            dispatcher.scheduler.advanceTimeBy(201)
+            runCurrent()
+        }
+
+        tick(115) // crosses 110
+        assertEquals(listOf("車速已達每小時 110 公里"), announcer.spoken)
+
+        tick(125) // crosses 120 too — 110 isn't re-announced
+        assertEquals(listOf("車速已達每小時 110 公里", "車速已達每小時 120 公里"), announcer.spoken)
+
+        tick(135) // crosses 130
+        assertEquals(
+            listOf("車速已達每小時 110 公里", "車速已達每小時 120 公里", "車速已達每小時 130 公里"),
+            announcer.spoken,
+        )
+
+        tick(115) // still above 110 (easing back from the peak) — no new announcement
+        assertEquals(3, announcer.spoken.size)
+
+        tick(90) // drops below the lowest threshold — re-arms every threshold
+        assertEquals(3, announcer.spoken.size)
+
+        tick(112) // a genuinely new excursion after slowing back into normal traffic
+        assertEquals(4, announcer.spoken.size)
+        assertEquals("車速已達每小時 110 公里", announcer.spoken.last())
     }
 
     @Test
@@ -400,67 +828,6 @@ class DashboardViewModelTest {
     }
 
     @Test
-    fun ecuSupportTestRunsAllProbesAndRecordsSuccess() = runTest(dispatcher) {
-        val client = FakeBleObdClient()
-        val viewModel = DashboardViewModel(client, universalProfile, externalScope = backgroundScope)
-
-        client.completeInitAndSkipVin() // leaves an in-flight rpm poll
-
-        viewModel.testEcuSupport()
-        runCurrent() // pauses the fast loop; "0100" is queued behind the in-flight rpm poll
-
-        client.respondToNextWrite("41 0C 00 00\r>") // completes the in-flight rpm poll
-        assertEquals("0100\r", client.writes.last())
-
-        client.respondToNextWrite("41 00 BE 1F A8 13\r>")
-        assertEquals("0902\r", client.writes.last())
-
-        client.respondToNextWrite("49 02 01 31 48 47 43 4D 38 32 36 33 33 41 31 32 33 34 35 36\r>")
-        assertEquals("22F190\r", client.writes.last())
-
-        client.respondToNextWrite("62 F1 90 31 48 47 43 4D 38 32 36 33 33 41 31 32 33 34 35 36\r>")
-
-        val results = viewModel.uiState.value.ecuTestResults
-        assertEquals(3, results.size)
-        assertEquals(listOf("0100", "0902", "22F190"), results.map { it.command })
-        assertTrue(results.all { it.status == EcuTestStatus.SUPPORTED })
-        assertEquals(false, viewModel.uiState.value.isTestingEcu)
-    }
-
-    @Test
-    fun ecuSupportTestRetriesUdsVinAfterExtendedSessionWhenRefused() = runTest(dispatcher) {
-        val client = FakeBleObdClient()
-        val viewModel = DashboardViewModel(client, universalProfile, externalScope = backgroundScope)
-
-        client.completeInitAndSkipVin() // leaves an in-flight rpm poll
-
-        viewModel.testEcuSupport()
-        runCurrent()
-
-        client.respondToNextWrite("41 0C 00 00\r>") // completes the in-flight rpm poll
-        client.respondToNextWrite("41 00 BE 1F A8 13\r>") // 0100
-        client.respondToNextWrite("NO DATA\r>") // 0902 unsupported
-        assertEquals("22F190\r", client.writes.last())
-
-        client.respondToNextWrite("7F 22 11\r>") // plain 22F190 refused -> service not supported
-        assertEquals("1003\r", client.writes.last())
-
-        client.respondToNextWrite("50 03\r>") // extended diagnostic session accepted
-        assertEquals("22F190\r", client.writes.last())
-
-        client.respondToNextWrite("62 F1 90 31 48 47 43 4D 38 32 36 33 33 41 31 32 33 34 35 36\r>")
-        assertEquals("1001\r", client.writes.last()) // restores the default session
-
-        client.respondToNextWrite("50 01\r>")
-
-        val results = viewModel.uiState.value.ecuTestResults
-        assertEquals(4, results.size)
-        assertEquals(EcuTestStatus.NEGATIVE, results[2].status)
-        assertEquals(EcuTestStatus.SUPPORTED, results[3].status)
-        assertEquals(false, viewModel.uiState.value.isTestingEcu)
-    }
-
-    @Test
     fun readTroubleCodesDecodesResponseIntoState() = runTest(dispatcher) {
         val client = FakeBleObdClient()
         val viewModel = DashboardViewModel(client, universalProfile, externalScope = backgroundScope)
@@ -511,7 +878,7 @@ class DashboardViewModelTest {
     }
 
     @Test
-    fun stopsPollingStandardExtraPidPermanentlyAfterRepeatedFailures() = runTest(dispatcher) {
+    fun backsOffAfterRepeatedFailuresThenRetriesOnceCooldownElapses() = runTest(dispatcher) {
         val client = FakeBleObdClient()
         val profileWithCoolant = universalProfile.copy(
             pids = universalProfile.pids + PidDefinition(request = "0105", field = "coolantTempC", unit = "degC", formula = "A-40"),
@@ -551,16 +918,24 @@ class DashboardViewModelTest {
         val coolantWritesSoFar = client.writes.count { it == "0105\r" }
         assertEquals(5, coolantWritesSoFar)
 
-        // It should now be permanently skipped. Fast-forwarding well past many more ticker cycles
-        // — without answering anything, so the fast loop's own rpm/speed polls just time out and
-        // retry on their own — must produce no further "0105" writes. Just as importantly, this
-        // must not hang: if the give-up branch ever forgot to delay, an all-given-up PID list
-        // would busy-loop this coroutine with no suspension point, and this call would never
-        // return instead of the test passing.
-        dispatcher.scheduler.advanceTimeBy(200_000)
+        // Backed off, but not permanently — fast-forwarding a bit (comfortably under
+        // GIVE_UP_COOLDOWN_TURNS * BRAND_POLL_INTERVAL_MS) without answering anything (the fast
+        // loop's own rpm/speed polls just time out and retry on their own) must produce no further
+        // "0105" writes yet. Just as importantly, this must not hang: if the give-up branch ever
+        // forgot to delay, an all-given-up PID list would busy-loop this coroutine with no
+        // suspension point, and this call would never return instead of the test passing.
+        dispatcher.scheduler.advanceTimeBy(40_000)
         runCurrent()
-
         assertEquals(coolantWritesSoFar, client.writes.count { it == "0105\r" })
+
+        // Once the cooldown fully elapses, it gets one more chance — a field that recovers (a
+        // brief bus lull, not genuine lack of support) shouldn't stay stuck at "--" all drive.
+        dispatcher.scheduler.advanceTimeBy(100_000)
+        runCurrent()
+        assertTrue(
+            "expected a retry write after the give-up cooldown elapsed, still only saw $coolantWritesSoFar",
+            client.writes.count { it == "0105\r" } > coolantWritesSoFar,
+        )
     }
 
     @Test
@@ -612,7 +987,9 @@ class DashboardViewModelTest {
             runCurrent()
         }
 
-        assertEquals("3.0 檔", viewModel.uiState.value.extraReadings["gearRaw"])
+        // "3 檔", not "3.0 檔" — gearRaw gets its own display formatting (see formatGearDisplay)
+        // rather than the generic "%.1f %unit%" every other PID uses, so P/R can be spelled out.
+        assertEquals("3 檔", viewModel.uiState.value.extraReadings["gearRaw"])
         // Two gear queries completing within 3s (BRAND_POLL_INTERVAL_MS, the normal brand-PID
         // ticker's cadence) proves fastPoll actually got its own shorter-interval ticker rather
         // than sharing the slow round-robin — on the old shared ticker this alone would take at

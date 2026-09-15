@@ -5,17 +5,6 @@ import com.jslee1972.vlinkerobd.model.VehicleData
 
 const val UNIVERSAL_BRAND = "通用"
 
-enum class EcuTestStatus { SUPPORTED, NO_DATA, NEGATIVE, UNRECOGNIZED, TIMEOUT }
-
-/** One probe result from the "ECU 支援測試" tool (see DashboardViewModel.testEcuSupport). */
-data class EcuTestResult(
-    val command: String,
-    val description: String,
-    val raw: String?,
-    val status: EcuTestStatus,
-    val statusMessage: String,
-)
-
 data class DashboardUiState(
     val connectionLabel: String = "尚未連線",
     val connectedDeviceName: String? = null,
@@ -37,13 +26,15 @@ data class DashboardUiState(
     val isReadingTroubleCodes: Boolean = false,
     val detectedVin: String? = null,
     val detectedBrand: String? = null,
-    val ecuTestResults: List<EcuTestResult> = emptyList(),
-    val isTestingEcu: Boolean = false,
     /** Phone GPS-derived speed (km/h), shown alongside the OBD-reported speed for comparison. */
     val gpsSpeedKph: Float? = null,
     /** Every field this profile setup could ever report — universal + trip computer + every
      * loaded brand profile's own fields — for the custom-section field picker. */
     val allKnownFields: List<String> = emptyList(),
-    /** Fields the user pinned into the dashboard's own "自訂" section, persisted across launches. */
-    val selectedCustomFields: Set<String> = emptySet(),
+    /** Fields the user pinned into the dashboard's own "自訂" section, in the user's own
+     * drag-to-reorder order, persisted across launches. */
+    val selectedCustomFields: List<String> = emptyList(),
+    /** At most 2 fields shown next to the landscape driving-dynamics ring gauge's own center
+     * legend — a separate, much smaller slot from [selectedCustomFields]. */
+    val ringLegendFields: List<String> = emptyList(),
 )
