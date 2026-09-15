@@ -28,11 +28,43 @@ final class DashboardController: ObservableObject {
     private static let brandPollIntervalMs = 3000
     private static let fastBrandPollIntervalMs = 800
     private static let giveUpThreshold = 5
+    /// How many of this field's own poll turns to skip after hitting `giveUpThreshold`, before
+    /// giving it one more chance — real-world testing showed a brand PID (gear position) that
+    /// works most of the time can still fail 5 times in a row during a brief lull (e.g. idling at
+    /// a light, the bus going briefly quiet), and the give-up used to be permanent for the rest of
+    /// the connection: once tripped, that field stayed "--" for the whole drive even once the ECU
+    /// started answering again. A field that's genuinely never going to respond (no such module on
+    /// the bus at all, e.g. an unfitted TPMS option) just keeps cycling through this — the
+    /// occasional wasted retry is cheap next to staying permanently blank if it turns out to
+    /// recover.
+    private static let giveUpCooldownTurns = 25
     private static let historySize = 60
     private static let staleThreshold = 5
     private static let minFuelRateForEconomyLph = 0.05
     private static let minFuelForAverageEconomyL = 0.01
     private static let initSequence = ["ATZ", "ATE0", "ATL0", "ATS0", "ATH0", "ATSP0", "ATCFC1", "0100"]
+    /// Spoken once per speeding excursion, not every tick above the line — see
+    /// `announceSpeedIfNeeded`.
+    private static let speedAnnounceThresholds = [110, 120, 130]
+    /// These three universal fields are read by the dedicated fast loop (`fastLoopTick`), which
+    /// writes straight to `state.vehicleData`/trip-computer state — never to `standardReadings`/
+    /// `extraReadings`, i.e. never to `liveReadings`. Excluded here from *both* the generic
+    /// ticker (so it doesn't redundantly re-poll them) and `relevantFieldsForCurrentVehicle` (so
+    /// they can't be picked for the custom section or ring legend, where they'd only ever show
+    /// "--" forever — a real gap: the ring already displays both prominently).
+    private static let fastLoopExclusiveFields: Set<String> = ["speedKPH", "rpm", "mafGramsPerSec"]
+    /// Citroën's 4-wheel tyre pressure/temperature DIDs (0x22D60B–0x22D612), confirmed via real
+    /// diagnostic-console logs to return NO DATA on every poll attempt across all 8 fields — this
+    /// vehicle's tyre under-inflation detection module is an optional PSA fitment and appears not
+    /// to be installed, not a formula/addressing bug. Excluded from polling entirely (no point
+    /// spending bus time on a DID that never answers) and from both field pickers, so these can no
+    /// longer be (re)selected and clutter the side panel/ring legend with permanent "--" cards.
+    private static let unavailableTireFields: Set<String> = [
+        "tireFrontLeftPressureBar", "tireFrontRightPressureBar",
+        "tireRearLeftPressureBar", "tireRearRightPressureBar",
+        "tireFrontLeftTempC", "tireFrontRightTempC",
+        "tireRearLeftTempC", "tireRearRightTempC",
+    ]
 
     // MARK: Ticker jobs
 
@@ -50,6 +82,7 @@ final class DashboardController: ObservableObject {
 
     private var autoConnectAttempted = false
     private var failureStreak: [String: Int] = [:]
+    private var giveUpCooldownRemaining: [String: Int] = [:]
 
     // MARK: Trip computer state
 
@@ -72,7 +105,9 @@ final class DashboardController: ObservableObject {
     private var previousSpeedSampleDate: Date?
     private let speechAnnouncer = SpeechAnnouncer()
     private var hasAnnouncedBatteryVoltage = false
-    private var lastAnnouncedGear: Int?
+    /// Speed thresholds (km/h) already announced since the last time speed dropped back under the
+    /// lowest one — see `announceSpeedIfNeeded`.
+    private var announcedSpeedThresholds: Set<Int> = []
     private var lastSpeedKph: Double?
     private var rpmStaleCount = 0
     private var speedStaleCount = 0
@@ -105,8 +140,23 @@ final class DashboardController: ObservableObject {
         self.parameterMetadata = ParameterMetadata(profiles: allProfiles)
 
         state.availableBrands = [universalBrand] + brandProfiles.keys.sorted()
-        state.selectedCustomFields = customSectionStore.selectedFields()
-        state.ringLegendFields = ringLegendFieldsStore.fields()
+
+        // Drop any tyre-pressure/temp fields a user pinned before they were confirmed dead
+        // (`unavailableTireFields`) so those cards vanish on next launch instead of sitting there
+        // showing "--" forever until manually unchecked.
+        let storedCustomFields = customSectionStore.selectedFields()
+        let cleanedCustomFields = storedCustomFields.filter { !Self.unavailableTireFields.contains($0) }
+        if cleanedCustomFields.count != storedCustomFields.count {
+            customSectionStore.setSelectedFields(cleanedCustomFields)
+        }
+        state.selectedCustomFields = cleanedCustomFields
+
+        let storedRingLegendFields = ringLegendFieldsStore.fields()
+        let cleanedRingLegendFields = storedRingLegendFields.filter { !Self.unavailableTireFields.contains($0) }
+        if cleanedRingLegendFields.count != storedRingLegendFields.count {
+            ringLegendFieldsStore.setFields(cleanedRingLegendFields)
+        }
+        state.ringLegendFields = cleanedRingLegendFields
 
         wireBleCallbacks()
         gpsSpeedSource.onSpeedChange = { [weak self] speed in
@@ -125,6 +175,8 @@ final class DashboardController: ObservableObject {
             fields.formUnion(profile.pids.map(\.field))
             fields.formUnion(profile.models.flatMap { $0.pids.map(\.field) })
         }
+        fields.subtract(Self.fastLoopExclusiveFields)
+        fields.subtract(Self.unavailableTireFields)
         return Array(fields).sorted()
     }
 
@@ -223,12 +275,18 @@ final class DashboardController: ObservableObject {
     func startGpsTracking() { gpsSpeedSource.start() }
     func stopGpsTracking() { gpsSpeedSource.stop() }
 
+    /// Toggles `field` in the side-panel custom section. Deselecting always just removes it;
+    /// selecting beyond the 8 pinned-card slots bumps the oldest field out (FIFO) instead of
+    /// silently appending past what `pinnedFields` ever displays — appending unbounded made
+    /// newly-checked fields invisible once 8 were already selected, which read as the picker
+    /// being hardcoded/unresponsive.
     func toggleCustomField(_ field: String) {
         var fields = state.selectedCustomFields
         if let index = fields.firstIndex(of: field) {
             fields.remove(at: index)
         } else {
             fields.append(field)
+            if fields.count > 8 { fields.removeFirst() }
         }
         state.selectedCustomFields = fields
         customSectionStore.setSelectedFields(fields)
@@ -437,11 +495,12 @@ final class DashboardController: ObservableObject {
         rpmStaleCount = 0
         speedStaleCount = 0
         // Every connection (including a dropout's auto-reconnect) re-announces the battery
-        // voltage and re-baselines gear — unlike the trip computer above, there's no harm in
-        // saying the voltage again after a reconnect, and a stale `lastAnnouncedGear` from before
-        // the drop could otherwise misfire a "jump" announcement that isn't real.
+        // voltage and re-arms every speed threshold — unlike the trip computer above, there's no
+        // harm in saying the voltage again after a reconnect, and stale announced-thresholds from
+        // before the drop could otherwise suppress a real speeding announcement after reconnecting
+        // mid-excursion.
         hasAnnouncedBatteryVoltage = false
-        lastAnnouncedGear = nil
+        announcedSpeedThresholds = []
 
         pollingJob?.cancel()
         pollingJob = Task { [weak self] in
@@ -480,6 +539,7 @@ final class DashboardController: ObservableObject {
                 speedStaleCount = 0
                 state.vehicleData.speedKph = Int(value)
                 lastSpeedKph = value
+                announceSpeedIfNeeded(value)
                 var history = state.speedHistory
                 history.append(Float(value))
                 if history.count > Self.historySize { history.removeFirst(history.count - Self.historySize) }
@@ -581,6 +641,7 @@ final class DashboardController: ObservableObject {
         standardPollingJob?.cancel(); standardPollingJob = nil
         fastStandardPollingJob?.cancel(); fastStandardPollingJob = nil
         failureStreak = [:]
+        giveUpCooldownRemaining = [:]
     }
 
     private func restartBrandPolling() {
@@ -591,13 +652,13 @@ final class DashboardController: ObservableObject {
             fastBrandPollingJob = nil
             return
         }
-        let allPids = profile.pids + profile.models.flatMap { model in
+        let allPids = (profile.pids + profile.models.flatMap { model in
             model.pids.map { pid -> PidDefinition in
                 var copy = pid
                 if copy.ecuHeader == nil { copy.ecuHeader = model.ecuHeader }
                 return copy
             }
-        }
+        }).filter { !Self.unavailableTireFields.contains($0.field) }
         let slow = allPids.filter { !$0.fastPoll }
         let fast = allPids.filter { $0.fastPoll }
         brandPollingJob = launchPidTicker(pids: slow, intervalMs: Self.brandPollIntervalMs, isBrand: true)
@@ -607,8 +668,7 @@ final class DashboardController: ObservableObject {
     private func restartStandardPolling() {
         standardPollingJob?.cancel()
         fastStandardPollingJob?.cancel()
-        // speedKPH/rpm/mafGramsPerSec are handled by the dedicated fast loop, not this ticker.
-        let extraPids = universalProfile.pids.filter { !["speedKPH", "rpm", "mafGramsPerSec"].contains($0.field) }
+        let extraPids = universalProfile.pids.filter { !Self.fastLoopExclusiveFields.contains($0.field) }
         let slow = extraPids.filter { !$0.fastPoll }
         let fast = extraPids.filter { $0.fastPoll }
         standardPollingJob = launchPidTicker(pids: slow, intervalMs: Self.brandPollIntervalMs, isBrand: false)
@@ -623,8 +683,16 @@ final class DashboardController: ObservableObject {
                 for pid in pids {
                     if Task.isCancelled { return }
                     if (self.failureStreak[pid.field] ?? 0) >= Self.giveUpThreshold {
-                        try? await Task.sleep(for: .milliseconds(intervalMs))
-                        continue
+                        let remaining = (self.giveUpCooldownRemaining[pid.field] ?? Self.giveUpCooldownTurns) - 1
+                        if remaining > 0 {
+                            self.giveUpCooldownRemaining[pid.field] = remaining
+                            try? await Task.sleep(for: .milliseconds(intervalMs))
+                            continue
+                        }
+                        // Cooldown elapsed — give it one more chance instead of staying given-up
+                        // for the rest of the connection.
+                        self.failureStreak[pid.field] = 0
+                        self.giveUpCooldownRemaining[pid.field] = nil
                     }
                     while self.fastLoopPaused {
                         try? await Task.sleep(for: .milliseconds(Self.pollIntervalMs))
@@ -686,15 +754,6 @@ final class DashboardController: ObservableObject {
         }
     }
 
-    /// Same 0/7 special-casing as `formatGear`, phrased for speech rather than for the on-screen
-    /// card — "已跳 0 檔"/"已跳 7 檔" read as nonsense spoken aloud where P/R make immediate sense.
-    private static func gearAnnouncement(for gear: Int) -> String {
-        switch gear {
-        case 0: return "P 檔"
-        case 7: return "倒車檔"
-        default: return "\(gear)檔"
-        }
-    }
 
     private static func formatHoursMinutes(seconds: Double) -> String {
         let totalMinutes = Int(seconds / 60)
@@ -703,26 +762,38 @@ final class DashboardController: ObservableObject {
         return hours > 0 ? "\(hours) 小時 \(minutes) 分鐘" : "\(minutes) 分鐘"
     }
 
-    /// The two spoken announcements this app makes: battery voltage once per connection (right
-    /// after the first successful read), and gear changes from then on. Both are opt-out-free by
-    /// design — they're rare, short, and exactly the kind of glanceable-while-driving information
-    /// this app's whole landscape layout already exists for.
+    /// The spoken announcement this app makes from the generic ticker: battery voltage once per
+    /// connection, right after the first successful read. Opt-out-free by design — it's rare,
+    /// short, and exactly the kind of glanceable-while-driving information this app's whole
+    /// landscape layout already exists for. Speeding announcements are separate — see
+    /// `announceSpeedIfNeeded`, called from the fast loop where speed itself is read.
     private func announceIfNeeded(field: String, value: Double) {
         switch field {
         case "controlModuleVoltage":
             guard !hasAnnouncedBatteryVoltage else { return }
             hasAnnouncedBatteryVoltage = true
             speechAnnouncer.speak(String(format: "電池電壓 %.1f 伏特", value))
-        case "gearRaw":
-            let gear = Int(value.rounded())
-            let previousGear = lastAnnouncedGear
-            lastAnnouncedGear = gear
-            // The first reading after connecting just sets the baseline silently — there's
-            // nothing to have "jumped" from yet.
-            guard let previousGear, gear != previousGear else { return }
-            speechAnnouncer.speak(Self.gearAnnouncement(for: gear))
         default:
             break
+        }
+    }
+
+    /// Speaks once per threshold the first time speed reaches it, not on every tick spent above
+    /// it — otherwise cruising at 125 km/h would repeat "車速已達 120 公里" every poll. All
+    /// thresholds re-arm together only once speed drops back under the lowest one (110), so a
+    /// single speeding excursion that peaks at 130 and eases back to 115 doesn't re-announce 110
+    /// or 120 on the way down, but a genuinely new excursion after slowing back into normal traffic
+    /// does.
+    private func announceSpeedIfNeeded(_ speedKph: Double) {
+        guard let lowest = Self.speedAnnounceThresholds.first else { return }
+        if speedKph < Double(lowest) {
+            announcedSpeedThresholds.removeAll()
+            return
+        }
+        for threshold in Self.speedAnnounceThresholds where speedKph >= Double(threshold) {
+            if announcedSpeedThresholds.insert(threshold).inserted {
+                speechAnnouncer.speak("車速已達每小時 \(threshold) 公里")
+            }
         }
     }
 

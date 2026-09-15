@@ -17,6 +17,11 @@ struct DrivingDynamicsDashboardView: View {
     @State private var showEcuTest = false
     @State private var showCustomFieldPicker = false
     @State private var showRingLegendPicker = false
+    /// True after a long-press on a pinned side-panel card — shows a delete badge on every pinned
+    /// card (iOS Home Screen jiggle-mode style) so a card can be unpinned with one tap instead of
+    /// requiring the full field-picker sheet. Cleared by tapping the ring/background, or by
+    /// tapping a card outside its delete badge.
+    @State private var isEditingCustomFields = false
     /// Owned by `RootView`, not here — see `FloatingSpeedPiPController`'s doc comment for why.
     @EnvironmentObject var pipController: FloatingSpeedPiPController
 
@@ -196,6 +201,11 @@ struct DrivingDynamicsDashboardView: View {
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.vertical, 12)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                guard isEditingCustomFields else { return }
+                withAnimation(.easeOut(duration: 0.2)) { isEditingCustomFields = false }
+            }
 
             sidePanel(fields: rightFields).frame(maxWidth: .infinity)
         }
@@ -216,8 +226,10 @@ struct DrivingDynamicsDashboardView: View {
 
     /// Long-press-then-drag to reorder (`.draggable`/`.dropDestination` — the same system gesture
     /// iOS uses for Home Screen icons: hold, the card lifts, drag it onto another card to swap
-    /// positions) and double-tap to jump straight to the field picker instead of going via the
-    /// "..." menu's "編輯自訂參數".
+    /// positions), double-tap to jump straight to the field picker instead of going via the "..."
+    /// menu's "編輯自訂參數", and — also Home-Screen-style — the same long-press additionally puts
+    /// every pinned card into an edit state with a delete badge, so a single card can be unpinned
+    /// with one tap without opening the picker sheet at all.
     private func sidePanel(fields: [String]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             if fields.isEmpty {
@@ -232,13 +244,43 @@ struct DrivingDynamicsDashboardView: View {
                         value: controller.state.liveReadings[field] ?? "--",
                         compact: true
                     )
+                    .overlay(alignment: .topLeading) {
+                        if isEditingCustomFields {
+                            Button {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                    controller.toggleCustomField(field)
+                                }
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 20))
+                                    .foregroundStyle(.white, DesignPalette.danger)
+                                    .background(Circle().fill(Color.black).padding(2))
+                            }
+                            .buttonStyle(.plain)
+                            .offset(x: -8, y: -8)
+                            .transition(.scale.combined(with: .opacity))
+                        }
+                    }
                     .draggable(field)
                     .dropDestination(for: String.self) { droppedFields, _ in
                         guard let dropped = droppedFields.first else { return false }
                         controller.moveCustomField(dropped, before: field)
                         return true
                     }
-                    .onTapGesture(count: 2) { showCustomFieldPicker = true }
+                    .simultaneousGesture(
+                        LongPressGesture(minimumDuration: 0.45).onEnded { _ in
+                            guard !isEditingCustomFields else { return }
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { isEditingCustomFields = true }
+                        }
+                    )
+                    .onTapGesture(count: 2) {
+                        guard !isEditingCustomFields else { return }
+                        showCustomFieldPicker = true
+                    }
+                    .onTapGesture {
+                        guard isEditingCustomFields else { return }
+                        withAnimation(.easeOut(duration: 0.2)) { isEditingCustomFields = false }
+                    }
                 }
             }
             Spacer()
@@ -340,14 +382,18 @@ struct GlassStatCard: View {
 
             VStack(alignment: .leading, spacing: compact ? 2 : 4) {
                 Text(value)
-                    // `.title` rather than `.largeTitle` — longer formatted values (e.g. the trip
-                    // duration string "X 小時 Y 分鐘") were clipping even at the minimum scale
-                    // factor in a 3-column grid's narrower cards on smaller landscape screens.
-                    .font(.system(compact ? .title2 : .title, design: .rounded).weight(.bold))
+                    // `.title2`, not `.title`/`.largeTitle` — a low `minimumScaleFactor` combined
+                    // with a large base size meant short values ("87.0 度") rendered near full
+                    // size while longer ones with a multi-character unit ("21.0 公里/公升")
+                    // shrank much further to fit one line, so cards visibly disagreed on text
+                    // size next to each other. A smaller base size needs far less shrinking for
+                    // the longest realistic values, so the *range* between "just fits" and "short
+                    // string, full size" is much narrower — the floor is raised to match.
+                    .font(.system(.title2, design: .rounded).weight(.bold))
                     .foregroundStyle(.white)
                     .monospacedDigit()
                     .lineLimit(1)
-                    .minimumScaleFactor(0.5)
+                    .minimumScaleFactor(0.75)
                 Text(label)
                     .font(.system(size: compact ? 12 : 15))
                     .foregroundStyle(.white.opacity(0.5))
@@ -558,10 +604,12 @@ private struct DrivingRingGauge: View {
         guard value > 0 else { return }
         let deg = angle(for: min(value, maxValue), maxValue: maxValue)
         let rad = deg * .pi / 180
-        // Unit vectors at this point on the ring: `radial` points away from center, `tangent`
-        // points in the direction the arc sweeps as the value increases.
+        // Unit vectors at this point on the ring: `radial` points away from center. `back` points
+        // the way the fill *came from* (opposite the direction the arc sweeps as the value
+        // increases) — the arrow points back along the ring rather than forward, per feedback
+        // that "forward" read as pointing where the value is heading, not where the peak sits.
         let radial = CGPoint(x: cos(rad), y: sin(rad))
-        let tangent = CGPoint(x: -sin(rad), y: cos(rad))
+        let back = CGPoint(x: sin(rad), y: -cos(rad))
         let markerRadius = radius + 6
         let base = CGPoint(x: center.x + markerRadius * radial.x, y: center.y + markerRadius * radial.y)
 
@@ -569,8 +617,8 @@ private struct DrivingRingGauge: View {
             CGPoint(x: p.x + v.x * distance, y: p.y + v.y * distance)
         }
 
-        let tip = offset(base, tangent, 9)
-        let backCenter = offset(base, tangent, -3)
+        let tip = offset(base, back, 9)
+        let backCenter = offset(base, back, -3)
         let backLeft = offset(backCenter, radial, 3.5)
         let backRight = offset(backCenter, radial, -3.5)
         var arrow = Path()
@@ -580,7 +628,9 @@ private struct DrivingRingGauge: View {
         arrow.closeSubpath()
         ctx.fill(arrow, with: .color(color))
 
-        let labelPoint = offset(offset(base, tangent, -18), radial, 12)
+        // Right at the triangle's base (just a small radial nudge so it doesn't sit on top of the
+        // ring stroke) rather than trailing further back along the ring.
+        let labelPoint = offset(backCenter, radial, 11)
         let label = ctx.resolve(Text("\(Int(value))\(suffix)").font(.system(size: 11, weight: .bold)).foregroundColor(color))
         ctx.draw(label, at: labelPoint, anchor: .center)
     }
