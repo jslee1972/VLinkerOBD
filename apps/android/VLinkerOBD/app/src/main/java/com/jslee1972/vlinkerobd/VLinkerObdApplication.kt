@@ -4,12 +4,14 @@ import android.app.Application
 import com.jslee1972.vlinkerobd.ble.BleObdManager
 import com.jslee1972.vlinkerobd.ble.SharedPreferencesDeviceMemory
 import com.jslee1972.vlinkerobd.gps.AndroidGpsSpeedSource
+import com.jslee1972.vlinkerobd.speech.AndroidSpeechAnnouncer
 import com.jslee1972.vlinkerobd.obd.DtcDescriptions
 import com.jslee1972.vlinkerobd.obd.PidGroupRepository
 import com.jslee1972.vlinkerobd.obd.VehicleBrandDetector
 import com.jslee1972.vlinkerobd.ui.DashboardViewModel
 import com.jslee1972.vlinkerobd.ui.ParameterMetadata
 import com.jslee1972.vlinkerobd.ui.SharedPreferencesCustomSectionStore
+import com.jslee1972.vlinkerobd.ui.SharedPreferencesRingLegendFieldsStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -79,6 +81,8 @@ class VLinkerObdApplication : Application() {
             brandDetector = brandDetector,
             gpsSpeedSource = AndroidGpsSpeedSource(applicationContext),
             customSectionStore = SharedPreferencesCustomSectionStore(applicationContext),
+            speechAnnouncer = AndroidSpeechAnnouncer(applicationContext),
+            ringLegendFieldsStore = SharedPreferencesRingLegendFieldsStore(applicationContext),
         )
     }
 }

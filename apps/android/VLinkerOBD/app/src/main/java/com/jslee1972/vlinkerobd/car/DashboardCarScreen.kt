@@ -53,7 +53,7 @@ class DashboardCarScreen(carContext: CarContext) : Screen(carContext) {
 
         return PaneTemplate.Builder(pane)
             .setHeaderAction(Action.APP_ICON)
-            .setTitle("行車通")
+            .setTitle("平安行車通")
             .build()
     }
 }

@@ -372,3 +372,161 @@ VR7 修好、廠牌成功辨識成 Citroen 後，第一次連上真的開始輪�
 全部 6 項改完 `testDebugUnitTest`／`assembleDebug` 一次就過（新增 `loadsAndPersistsCustomSectionFieldSelection` 測試涵蓋自訂區塊的載入與持久化），`installDebug` 部署到實機後靜態截圖（尚未連車、`掃描中` 狀態）確認：無故障碼提示行確實消失、「自訂」區塊卡片正確出現在儀表下方並顯示空清單提示文字——由於沒有連上車，GPS 副數字位置／中文單位顯示／km/L 油耗換算這幾項還沒有機會在有實際資料的情況下用肉眼複驗，需要下次實際開車測試時再確認。
 
 第 7 點（英文＋繁中雙語系，依手機 OS 語言自動切換）與第 8 點（原始訊息裡是空白，內容不明）這輪還沒有處理——第 7 點是把整個 App 目前散落在 `DashboardScreen.kt`／`PidDisplayNames`／`ParameterDescriptions`／`ParameterGroups`／`DtcDescriptions`／`MainActivity` 等處的大量寫死中文字串，全部改成 Android 標準的 `strings.xml` 多語系資源系統（`values/strings.xml` + `values-zh-rTW/strings.xml`），工程量遠大於前面 6 點的總和，且會牽動幾乎每一個 UI 檔案，決定先在這裡記錄範圍評估、之後跟使用者確認是否要在這個時間點投入，再開始動工，避免倉促做出一半的雙語系。
+
+### 2026-09-11（第二十五輪：iOS 端獨立開發出全新功能後，回頭把可移植的部分補進 Android）
+
+使用者這幾天在另一台 Mac 上用另一個 Claude Code session 獨立開發 iOS 版本（`apps/ios/VLinkerOBD/`），從最初的單一 PID MVP 骨架一口氣做到接近 Android 的完整功能，並帶入 4 個新 commit（`63efc71`／`e8ea69d`／`5667e29`／`f22be1a`）。這輪的任務是讀懂 iOS 這幾輪新增了什麼、逐項判斷能不能／該不該搬回 Android，而不是照單全收——先用一個 Explore 排查 iOS 原始碼列出每個新功能的機制與可移植性，再據此動手。
+
+**v5 schema 遷移（隨 iOS port 一起做的，不是這輪新做的）**：`shared/vehicle-profiles/*.json` 新增 `displayNameZh`／`descriptionZh`／`group`（per-PID）三個欄位，把原本 Android／iOS 兩邊各自維護一份的中文名稱/說明/分組對照表收斂進共用 JSON——Android 這邊 `PidDisplayNames.kt`／`ParameterDescriptions.kt` 已被拿掉，改成讀 JSON 驅動的 `ParameterMetadata.kt`（iOS 端是 `ParameterMetadata.swift`）。確認 `shared/vehicle-profiles/*.json` 與 `apps/android/.../assets/vehicle-profiles/*.json` 逐位元組相同，沒有需要額外同步的資料。
+
+**確認搬過來的功能**：
+
+1. **行車電腦「重連清零」bug 修正**——iOS 原本每次 `startPolling()` 都無條件把 `tripDistanceKm`／`tripFuelLiters`／行駛時間歸零，包含單純訊號中斷後自動重連（`DISCONNECTED_AFTER_ERROR` → 重新掃描 → `READY` → 再跑一次 `startPolling()`）這種本來不該清空的情況。逐行核對後發現 **Android 從第二十二輪 (`startPolling`) 就有一模一樣的 bug**（每次呼叫都無條件重置三個累加欄位）。修法是新增 `pendingTripReset: Boolean`（預設 `true`），只有冷啟動或使用者主動按「中斷連線」（`disconnect()`）才設為 `true`；`startPolling()` 只在這個旗標為真時才歸零，然後立刻清掉旗標——單純的自動重連（`onConnectionStateChanged` 的 `DISCONNECTED_AFTER_ERROR` 分支）完全不碰這個旗標，行駛里程/平均油耗/行駛時間因此撐過短暫斷線。補了 `autoReconnectAfterBleDropoutPreservesTripComputer`／`explicitDisconnectResetsTripComputerOnNextConnect` 兩個測試鎖住這個行為（跑 30 個 fast-loop tick 累積出有意義的里程數，再分別模擬「斷線後自動重連」與「使用者主動斷線後重連」，驗證前者延續累積、後者才真的歸零）。
+2. **行車電腦時間改用實際時鐘**——原本 `tripElapsedSeconds` 是每個 tick 手動 `+= POLL_INTERVAL_MS/1000.0` 累加，如果輪詢的 coroutine 曾經被系統暫停過一段時間（例如 Android Doze），這個累加值會悄悄跟不上真實經過的時間。改成記錄 `tripStartTimeMs`（`System.currentTimeMillis()`），每次都用 `(現在時間 - 起始時間)` 算出行駛時間，不管中間輪詢迴圈有沒有被暫停過都準確。沒有新增測試直接鎖定這個換算（虛擬時間的 `TestDispatcher` 不會推進真實系統時鐘，用真實時鐘反而沒辦法用虛擬時間測試——這點跟 iOS 用 `Date()` 的簡單做法一致，兩邊都沒有為這個時鐘抽象加測試）。
+3. **語音播報**——新增 `speech/SpeechAnnouncer.kt`（介面＋`NoOpSpeechAnnouncer`）＋`AndroidSpeechAnnouncer.kt`（包 `android.speech.tts.TextToSpeech`，語言用 `Locale.TAIWAN`，取不到繁中語音包時退回簡中；`AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE` 讓播報像導航 App 一樣會 duck 掉正在播放的音樂，對應 iOS 用 `AVAudioSession` 的 `.voicePrompt`/`.duckOthers`）。播報兩件事，時機比照 iOS：電池電壓在每次連線後第一次讀到 `controlModuleVoltage` 時念一次（例如「電池電壓 12.6 伏特」），檔位在每次變檔（`gearRaw` 讀值改變，且不是這次連線的第一筆基準值）時念一次（例如「已跳4檔」）。跟 iOS 一樣**沒有開關**——照 iOS 程式碼註解的說法，這兩件事夠稀少、夠短，正是「開車時可以不看螢幕直接聽」值得為它中斷正在播的音樂的資訊。兩個旗標 (`hasAnnouncedBatteryVoltage`／`lastAnnouncedGear`) 在每次 `startPolling()`（包含自動重連）時重置——這點特意跟行車電腦的重置邏輯分開處理，重連後重新播報一次電壓沒有壞處，不像行車電腦歸零會抹掉真實累積的里程。補了 `announcesBatteryVoltageOncePerConnection`／`announcesGearChangesButNotTheFirstBaselineReading` 兩個測試。
+4. **GPS 車速降級顯示**——原本 OBD 車速逾時（連續 5 次輪詢失敗，`speedStaleCount >= STALE_THRESHOLD`）時，主要車速數字只會顯示 `vehicleData.speedKph` 的 fallback 0（等於斷線時直接歸零顯示）。改成 `obdSpeedKph ?: gpsSpeedKph ?: 0f`：OBD 車速消失但手機 GPS 還有訊號時，主要數字改顯示 GPS 車速，單位文字也從「km/h」換成「GPS訊號」提醒使用者這是替代來源；原本右下角的 GPS 比對小數字這時候會隱藏（兩個都顯示 GPS 車速沒有意義）。純粹是 `DashboardScreen.kt` 的顯示邏輯調整，`DashboardViewModel`／`GpsSpeedSource` 完全沒動，因為 Android 本來就已經有 GPS 車速的資料管線（第二十三輪做的）。
+5. **浮動車速小視窗**——iOS 用 `AVPictureInPictureController` 搭配假造影格的方式做出一個能浮在其他 App 上方的小視窗；Android 有原生對應功能（`Activity.enterPictureInPictureMode`，`minSdk 26` 剛好滿足 API 26 需求），不需要影格模擬那一套，直接讓系統把目前畫面縮小即可。新增 `ui/PipSpeedView.kt`（只顯示大大的車速數字＋單位，OBD/GPS 降級邏輯跟主畫面一致）、`MainActivity` 新增 `enterSpeedPipMode()`（`PictureInPictureParams` 設 3:2 長寬比）與 `onPictureInPictureModeChanged` 覆寫（用一個 `mutableStateOf` 切換 `setContent` 要渲染 `DashboardScreen` 還是 `PipSpeedView`），overflow 選單加一個「開啟浮動車速視窗」項目。`AndroidManifest.xml` 幫 `MainActivity` 加上 `android:supportsPictureInPicture="true"` 與 `android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|uiMode"`——後者特別重要：沒有宣告的話，進出 PiP 視窗本身就是一次 Activity 設定變更，預設行為是整個 Activity 重建，會重新觸發第二十一輪那個「旋轉導致 Activity 重建、重跑 BLE 自動連線 LaunchedEffect、弄壞連線狀態」的舊 bug——這正是當初鎖定 portrait 想避開的同一類問題，這次用 `configChanges` 直接聲明「這些變更自己處理，不要重建」來解決，而不是重蹈覆轍。
+
+**確認不搬的功能**：
+- **CarPlay 場景骨架**（`CarPlaySceneDelegate.swift`）——iOS 程式碼自己的註解就寫明「這段程式碼本身不會讓 App 真的上 CarPlay，要等 Apple 核准對應的 entitlement，這個類別實際上永遠不會被實例化」，是純骨架、目前不會執行任何東西。Android 這邊本來就有功能對等且已經真的能用的 Android Auto 整合（`car/VLinkerCarAppService` 等，第十四輪做的），沒有東西需要補。
+- **雙儀表板／landscape 同心圓環形錶＋分組滑頁**——iOS 最後把兩種模式合併成「只有 landscape 環形錶」一種畫面，跟 Android 的 portrait-only 鎖定方向正好相反。Android 目前鎖 portrait 是為了閃避一個已知的旋轉→BLE 連線損毀 bug（第二十一輪），要做 landscape 版面等於要先解決那個根因問題，不是這輪能力範圍內的小改動，列為之後有需要再評估的待辦，這輪不動。
+
+全部 4 項改完（含 4 個新測試），`testDebugUnitTest`／`assembleDebug` 一次就過，但這輪收尾時手機沒有透過 `adb` 連線（`adb devices -l` 回傳空清單），沒有機會做實機截圖驗證——語音播報、GPS 降級顯示、PiP 浮動視窗這三項都還沒有在真實裝置上肉眼/耳朵確認過，需要手機重新連線後再測。
+
+**事後複查（同一輪，使用者要求「recheck all function and test properly」）**：除了重跑 `clean testDebugUnitTest assembleDebug`（146 個測試全過，非快取結果）之外，額外做了兩項平常沒做過的檢查：
+
+1. **驗證新測試真的有鎖住 bug，不是空判斷**——暫時把 `startPolling()` 的 `if (pendingTripReset)` 改回無條件重置（模擬修復前的舊行為），重跑 `autoReconnectAfterBleDropoutPreservesTripComputer`：如預期失敗，證明這個測試真的會在 bug 重新出現時抓到；`explicitDisconnectResetsTripComputerOnNextConnect` 兩種寫法下都通過（本來就該如此，這個案例的行為在改之前之後是一致的）。確認完立刻改回正確版本，重跑全套測試恢復全綠。
+2. **補跑 `lintDebug`**（先前的驗證流程只有 `testDebugUnitTest`／`assembleDebug`，沒有納入 lint）——抓到兩個問題並修正：
+   - `CoarseFineLocation`（lint 錯誤等級，導致 `lintDebug` 直接 fail）：第二十三輪加 GPS 車速功能時只宣告了 `ACCESS_FINE_LOCATION`，沒有一併宣告 `ACCESS_COARSE_LOCATION`——Android 12 開始，只要 App 要 FINE 權限就必須兩個一起宣告＋一起請求，系統的「精確／大概位置」選擇對話框才會正常顯示。補上 manifest 的 `ACCESS_COARSE_LOCATION` 宣告，並把 `MainActivity` 的 `locationPermissionLauncher` 從 `RequestPermission()`（單一權限）改成 `RequestMultiplePermissions()`，一次請求兩個，但仍然只檢查 FINE 有沒有被授予才啟動 GPS 追蹤（`GPS_PROVIDER` 只有 FINE 授權才能用，COARSE 不夠）——這個 bug 是第二十三輪就存在的舊債，不是這輪新增的。
+   - `ModifierParameter`（Compose 官方慣例：`modifier: Modifier` 應該是函式簽章裡第一個有預設值的參數，這樣呼叫端才能穩定用位置參數＋trailing lambda 語法）：這輪在 `DashboardScreen()` 簽章裡插入 `onEnterPipMode: () -> Unit = {}` 時插在 `dtcDescriptions`／`parameterMetadata`（兩者都沒有預設值）跟 `modifier` 之前，導致 `modifier` 不再是「第一個有預設值的參數」。改成把 `onEnterPipMode` 移到 `modifier` 後面（簽章最後一個參數）即修正——這個是這輪新增程式碼自己造成的，不是舊債。
+
+兩個修正後重跑 `lintDebug testDebugUnitTest assembleDebug` 全部通過，警告數從 15 降到 14（剩下的 14 個全部是既有、跟這次改動無關的項目：8 個 Gradle 依賴版本可升級提示、`android:screenOrientation="portrait"` 的兩個對應警告——這是刻意的設計決策，第二十一輪已經記錄過取捨原因、Android Auto 服務的 `ExportedService`、圖示資料夾的 `ObsoleteSdkInt`、`BLUETOOTH_SCAN` 的 `usesPermissionFlags` 這輪 minSdk 用不到的屬性——只有一個新警告 `PictureInPictureIssue` 是這輪 PiP 功能帶來的：Android 12+ 建議額外呼叫 `setAutoEnterEnabled`／`setSourceRectHint` 讓 PiP 進出動畫更順滑，純粹是視覺體驗上的加分項而非功能缺陷，這輪先不做，留待之後真的要打磨 PiP 體驗時再處理。手機仍未連線，實機驗證（含這次修正的定位權限對話框）依然是待辦。
+
+### 2026-09-14（第二十六輪：iOS 端自己跑了一次 ultrareview 抓到的 bug，逐項核對 Android 是否也中招）
+
+使用者要求「check the design from github and review this android version」。拉取後發現 Mac 那邊多推了一個新 commit（`60ef562`，"fix(ios): ultrareview fixes, CarPlay Dashboard, gear P/R mapping, reorderable pickers"）——iOS 端對自己上一輪（第二十五輪對應的那批功能：行車電腦重連保留、GPS 降級、PiP、語音播報）跑了一次 code review，抓到好幾個自己程式碼裡的 bug 並修正。由於 Android 這輪是照著 iOS 當時（修正前）的行為去移植的，這些 bug 有沒有跟著抄過來，得逐項核對，不能假設「因為架構不同所以沒事」。
+
+逐項核對結果：
+
+1. **`connect()` 無條件重置行車電腦**——iOS 原本的修正把重置邏輯掛在 `connect()` 上，結果連「自動重連」路徑也會呼叫到 `connect()`，等於重置邏輯繞了一圈又繞回原本想避免的 bug；改成用 `isUserInitiated` 參數區分。**核對 Android：沒有中招**——Android 的 `pendingTripReset = true` 是設在 `disconnect()`（使用者主動斷線）裡，`connect()` 完全沒有碰這個旗標，架構上跟 iOS 修正後的版本是同一個設計，不是巧合躲過而是本來就這樣寫的。
+2. **GPS 降級速度餵進加速度計算，OBD 舊讀值 vs GPS 新讀值互減，產生假的急加速/煞車尖峰**——**核對 Android：沒有中招，但只是因為 Android 根本還沒做這個功能**——第二十五輪 Android 的 GPS 降級只做在 UI 顯示層（`DashboardScreen.kt` 的儀表數字），行車電腦（`updateTripComputer`）完全沒有接上 GPS，OBD 訊號中斷時里程/油耗會直接停止累積。這是真正的功能缺口，這輪照 iOS 修正後的正確做法一起補上：`updateTripComputer` 拆成 `speedKph`（OBD 優先，斷訊時退回 GPS，餵給里程/油耗/油耗經濟性計算）與 `obdSpeedKph`（純 OBD，斷訊時是 `null`，只餵給加速度計算），兩個值互相independent，加速度永遠不會拿 GPS 數字去跟 OBD 數字互減。新增 `tripDistanceFallsBackToGpsSpeedWhileObdSpeedIsStale` 測試鎖住這個行為。
+3. **加速度用假定的固定輪詢間隔（`POLL_INTERVAL_MS`）當分母，而不是兩次取樣間實際經過的時間**——**核對 Android：真的中招了**。Android 的 `fastLoopPaused`（手動指令、ECU 測試、每一次廠牌/標準 PID 輪詢都會短暫借用這個旗標暫停快速迴圈）代表兩次真正拿到 OBD 車速讀值之間，實際經過的時間不見得剛好是 200ms，可能因為輪詢排隊而拉長到一兩秒——用固定 200ms 去除速度差，遇到這種情況會算出離譜的加速度尖峰。修正：新增 `previousSpeedSampleTimeMs`，改用 `(現在時間 − 上次取樣時間)` 當真實分母，並比照 iOS 加上 `dtSeconds > 0 && dtSeconds < 2.0` 的合理範圍檢查——超出範圍就這一拍先不發佈新的加速度數字（維持上一個有效值），不會拿一個橫跨斷點的差值硬算出天文數字。
+4. **PiP 的 teardown 在 `stop()` 裡直接同步執行，沒有等系統的 delegate callback 確認真的停止**、**PiP 啟動被系統拒絕時 `isActive` 永遠卡在 true**——**核對 Android：架構上完全不會中招**。iOS 的 PiP 是自己手刻 `AVSampleBufferDisplayLayer` 塞假影格進 `AVPictureInPictureController`，所以才需要自己管理啟動/停止的狀態機。Android 這邊用的是系統原生 `enterPictureInPictureMode()`，`isInPip` 這個狀態完全是從系統的 `onPictureInPictureModeChanged` callback 被動驅動、從來不會在呼叫 `enterPictureInPictureMode()` 當下就樂觀地先設成 true——沒有自己手刻的 teardown 邏輯，也就沒有「同步 teardown 搶在 callback 前面跑」或「啟動被拒絕卡死」這兩類 bug 的容身之處，這正是選用系統原生 API 而不是複製 iOS 那套手刻方案的好處。
+5. **`SpeechAnnouncer` 的音訊設定旗標即使設定失敗也會 latch 住，永遠不會重試**——**核對 Android：檢查過，設計上不對等，不強行套用同一個修正**。iOS 的問題是 `AVAudioSession.setActive(true)` 這個呼叫本身可能拋錯（例如有電話正在進行），錯了卻用 `try?` 吞掉還照樣 latch 成功旗標。Android 這邊 `AndroidSpeechAnnouncer` 用的是 `TextToSpeech` 的非同步 `OnInitListener`，`ready = true` 只有在 `status == TextToSpeech.SUCCESS`（引擎真的初始化成功）之後才會設定；後面的 `setLanguage()`／`setAudioAttributes()` 即使繁中語音包不存在，最多退化成用系統預設語言講話，不會整個啞掉——跟 iOS「整個 session 沒 active、完全發不出聲音」的失敗模式嚴重程度不同，這輪不跟著改。
+6. **檔位 P/R 對照（0=P、7=R）**——iOS 這輪根據自排車主的實測回報，正式把這個對照表寫進 `citroen.json` 的 `descriptionZh`，並在畫面格式化與語音播報都加上特殊處理。這份 JSON 的更新（純文字說明，公式沒變）已經在 `git pull` 的時候自動帶進 `shared/`／Android assets 兩邊（確認過兩份 byte-for-byte 相同）。**這輪把對應的程式邏輯也搬進 Android**：新增 `formatGearDisplay()`（0→「P 檔」、7→「R 檔（倒車）」、其餘維持「N 檔」的整數顯示，不再是舊的 `"%.1f 檔"` 帶小數點格式）套用在 `launchPidTicker` 的格式化字串上；`gearAnnouncement()`（0→「P 檔」、7→「倒車檔」、其餘維持「已跳N檔」）套用在語音播報。新增 `formatsAndAnnouncesParkAndReverseGearsSpecially` 測試同時鎖住畫面格式與語音兩邊；連帶更新了舊的 `fastPollBrandPidIsPolledMuchSoonerThanTheNormalBrandTicker` 測試，把過期的 `"3.0 檔"` 斷言改成新格式的 `"3 檔"`。
+7. **自訂區塊／指針錶圖例的欄位選擇器改成只列出目前偵測到／選擇的廠牌欄位，不再是「所有已載入過的廠牌」（移除 `allKnownFields` 這個「已死」欄位）**——這是 iOS 這輪順手做的設計簡化：先前的 `allKnownFields` 一次性算好、包含所有已載入的廠牌 profile 的欄位，切換／偵測到不同廠牌後也不會跟著收斂，導致挑選器裡永遠混著其他廠牌、這台車不可能回答的欄位。**Android 有一模一樣的設計問題**（`allKnownFields` 原本是建構時算一次的 `val`，`selectBrand()` 從來沒有重新算過），這輪一併修正：把 `allKnownFields` 改成 `relevantFieldsFor(brand)` 函式（通用＋行車電腦欄位＋該廠牌自己的欄位），`selectBrand()` 呼叫時連帶更新 `_uiState.allKnownFields`。原本斷言「一建立 ViewModel 就看得到 Honda 的 `batteryVoltage`」的舊測試已經不成立（那正是這個 bug 本身的行為），改寫成驗證「選擇 Honda 之前看不到、選了之後才看得到」，直接鎖住修正後的行為而不是舊的錯誤行為。
+
+**確認不需要處理的其餘項目**：
+- **CarPlay Dashboard 場景骨架**（`CarPlayDashboardSceneDelegate.swift`）——跟主要的 CarPlay 場景骨架同樣的「等 Apple 核准 entitlement 之前不會被實例化」的狀態，Android Auto 已有功能對等且真正能用的整合，不需要對應動作。
+- **`selectedCustomFields` 從 Set 改成有序陣列＋側邊面板拖曳排序、雙擊開啟選擇器**——這是 iOS 特定 UI（landscape 環形錶的側邊固定卡片）的排序需求；Android 的「自訂」區塊目前是格狀清單而非側邊固定卡片，沒有對應的排序 UI 概念，這輪不動，等 Android 真的要做類似排版時再評估是否要跟進。
+- **主畫面名稱改成「平安行車通」**（iOS `CFBundleDisplayName`）——純品牌命名決定，不是程式邏輯，留給使用者決定要不要讓 Android 這邊（目前 manifest 是「行車通」）也跟著改名，這輪不擅自更動。
+
+全部改完後 `clean testDebugUnitTest assembleDebug lintDebug --rerun-tasks` 一次全過（148 個測試、0 失敗，lint 沒有新增問題）。手機這輪同樣沒有透過 `adb` 連線，這批修正（尤其是 GPS 降級餵進里程／加速度真實時間差）都還沒機會實機驗證。
+
+**重大更新（同一輪，手機重新連上後實機測試）**：手機（CPH1877）重新連上後裝上這批修正，一開機就閃退——`adb logcat` 抓到 `java.lang.AbstractMethodError: abstract method "void android.location.LocationListener.onProviderDisabled(java.lang.String)"`。
+
+根因：`gps/AndroidGpsSpeedSource.kt`（第二十三輪 GPS 車速功能寫的）用 Kotlin 的 SAM 轉換寫法 `LocationListener { location -> ... }`，只實作 `onLocationChanged`，仰賴 `LocationListener` 介面在較新 API 版本裡幫 `onStatusChanged`／`onProviderEnabled`／`onProviderDisabled` 提供的預設空實作。問題是**這支實機（OPPO ColorOS）雖然回報的 API level 滿足 compileSdk 需求，實際上機的 framework 並沒有帶那三個方法的預設實作**——這是已知的、特定 OEM ROM 會出現的相容性陷阱：編譯期用的 SDK stub 有預設方法，執行期的實際 framework 卻沒有，一呼叫就丟 `AbstractMethodError`。這顆 bug 從第二十三輪加入 GPS 功能後就一直潛伏著，**這是這整個專案第一次真正抓到、修好的一個「一開啟 GPS 追蹤就必定閃退」的嚴重 bug**——回頭看，先前好幾輪的實機驗證screenshot都只拍到剛啟動、GPS 還沒真正開始追蹤前的畫面，沒有一次撐到閃退發生後還繼續操作，所以整個抓漏過程都沒發現。
+
+修法：把 `listener` 從單一 lambda 改成 `object : LocationListener { ... }` 明確覆寫全部四個方法（`onLocationChanged` 做正事，其餘三個明確給空的方法主體），這樣不管執行期的 framework 有沒有預設方法，這個類別的 bytecode 本身就一定有完整實作，不會再依賴執行期的介面預設方法解析行為。
+
+修好後在實機上完整驗證了這一輪所有新功能：
+- App 正常啟動、不再閃退，BLE 掃描正常運作
+- 開啟 overflow 選單，確認新增的「開啟浮動車速視窗」選項存在
+- 點擊後，App 真的縮小成一個浮動在桌面上的小視窗，顯示「--」（尚未連線、沒有速度資料，符合預期的誠實 fallback 顯示）與「km/h」單位文字，右上角有關閉按鈕——PiP 功能端到端驗證成功
+- 關閉浮動視窗後，`logcat` 沒有任何新的錯誤/例外
+
+語音播報、GPS 降級主顯示、行車電腦重連保留這幾項功能因為沒有實際連上車（沒有 OBD 資料、車子沒在開），還沒機會用真實駕駛情境驗證，留待下次開車測試時確認。
+
+### 2026-09-14（第二十七輪：追加一輪 iOS commit、全面地毯式比對，並處理 App 改名／螢幕常亮）
+
+**追加的 iOS commit**（`8d3829c`，"simplify gear voice announcement, add tire-pressure diagnostics probe"）：
+1. 檔位語音播報簡化——前進檔位只念「2檔」，不再是「已跳2檔」（P/R 維持原本各自的措辭）。Android 同步調整 `gearAnnouncement()`，並更新對應測試斷言。
+2. 新增「查詢胎壓原始值」一鍵診斷探測按鈕（跟上一輪 `probeGearRaw()` 同一套 `sendCommandSequence` 連續送出機制，探測 4 個胎壓 DID：`22D610`／`22D60F`／`22D612`／`22D611`，header `6AF`）——這 4 個 DID 從來沒有回過資料，這顆按鈕能一次分辨「NO DATA（模組在，但 DID 不對）」還是「逾時（車上可能根本沒裝胎壓偵測模組——這台車的原廠維修手冊把它列為選配）」。連帶發現 Android 原本只有 `sendManualCommand`（一次一條指令），沒有 iOS 這套「一次連續送出多條指令、只暫停快速迴圈一次」的機制——單條慢慢打，指令間的空檔在高速行駛時足以讓 ECU/匯流排閒置，最後一條常常錯誤地收到 NO DATA。這輪把 `sendManualCommand` 重構成建立在新的通用 `sendCommandSequence(commands: List<String>)` 之上，並新增 `probeGearRaw()`／`probeTirePressures()`，兩個都掛進「診斷主控台」對話框，各一個按鈕。
+
+**使用者接著要求「檢查 GitHub 是否沒有抓到全部的 iOS 程式做 Android 的功能開發」**——用一個 Explore 排查，不是只比對最近幾個 commit 的 diff，而是把 `apps/ios/VLinkerOBD/*.swift`（排除 landscape 環形錶那組、CarPlay 骨架這兩類已確認不需要搬的）跟 Android 對應程式碼逐檔案、逐行核對一遍。結論：**大部分已經搬得非常完整**（BLE 層、`ObdCommandQueue`、`ObdResponseParser`、`PidFormula`、`BitFieldExtractor`、`VehicleBrandDetector`、`ParameterMetadata`、`DtcParser`／`DtcDescriptions` 幾乎逐行對應），只抓到 4 個先前沒發現的小落差：
+
+1. **自訂區塊少一個「全部移除」按鈕**——iOS 的 `CustomFieldPickerView` 有一個一次清空全部已選欄位的按鈕（`DashboardController.clearAllCustomFields()`）。Android 新增 `DashboardViewModel.clearAllCustomFields()` 與 `CustomFieldPickerDialog` 標題列上的「全部移除」按鈕（紅字，`role=destructive` 對應的視覺處理）。
+2. **首次開啟沒有預設的自訂欄位**——iOS 的 `ParameterGroups.defaultCustomFields`（水溫、油量、電瓶電壓、引擎負載、瞬時/平均油耗、行駛里程、環境溫度 8 個通用欄位）在使用者從沒動過選擇器時當作預設值，讓第一次開啟就看到有意義的資料，而不是空白區塊；`UserDefaultsCustomSectionStore` 用「這個 key 有沒有被寫過」而不是「陣列是不是空的」來分辨「從沒設定過」跟「使用者按了全部移除、故意留空」。Android 補上對等的 `ParameterGroups.DEFAULT_CUSTOM_FIELDS`，`SharedPreferencesCustomSectionStore.selectedFields()` 改用 `prefs.contains(KEY_FIELDS)` 做同樣的「從未設定 vs 故意清空」判斷（這個修正也讓第 1 點的「全部移除」按鈕不會在下次開啟時被悄悄復原成預設值）。
+3. **`runtimeSinceStartSec` 沒有格式化**——這個欄位（ECU 距離上次啟動的累計運轉秒數，某些 ECU 的這個計時器從來不會重置，可能累積到幾十小時）原本跟其他欄位共用 `"%.1f %s"`（例如「146441.0 秒」），完全不可讀。iOS 有 `formatHoursMinutes()` 把它轉成「40 小時 41 分鐘」這種格式；Android 補上同名邏輯的 `formatHoursMinutes()`，比照 `gearRaw` 的方式在 `launchPidTicker` 特殊處理這個欄位。
+4. **沒有保持螢幕常亮**——iOS 的 `ContentView.swift` 設定 `UIApplication.shared.isIdleTimerDisabled = true`，手機掛在車上開著這個 App 不會自動鎖屏。Android 完全沒有對應設定，螢幕逾時鎖屏後整個「開車時一瞥即知」的用途就失效了——這個雖然沒被 Explore 列進三個「headline gaps」，但判斷上跟行車安全/核心可用性關係更大，這輪直接一起加上：`MainActivity.onCreate()` 呼叫 `window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)`。
+
+四項都已實作、新增/更新對應測試，`testDebugUnitTest assembleDebug lintDebug` 全過。
+
+**App 改名**：使用者確認 iOS 那邊已經把主畫面名稱改成「平安行車通」（`CFBundleDisplayName`），這輪不再是「留給使用者決定」的開放項目——直接把 Android 對應的三處都改掉：`AndroidManifest.xml` 的 `android:label`（啟動器圖示下方名稱）、`DashboardScreen.kt` 頂端列標題文字的預設值（沒偵測到廠牌時顯示的品牌名稱）、`car/DashboardCarScreen.kt`（Android Auto 車機畫面的標題）。
+
+**關於「沒有預設變成橫式畫面，判斷是存在舊的 App 功能」**——這不是舊程式碼殘留，是第二十一輪就記錄下來的刻意設計：Android 鎖定 portrait 是為了閃避一個真實存在、已經修好但還沒解除鎖定的 bug（旋轉觸發 Activity 重建，重跑 BLE 自動連線的 `LaunchedEffect`，弄壞連線狀態）。iOS 那邊在第二十五輪把兩種模式（portrait 標準模式／landscape 座艙模式）直接砍成只剩 landscape 環形錶一種畫面，等於两邊現在的方向鎖是**相反的**，不是 Android 落後或殘留舊功能。要不要讓 Android 也做橫式（不管是解鎖 portrait+landscape 雙向支援，還是像 iOS 一樣整個改成 landscape-only 的環形錶版面）是一個規模不小的獨立決定——需要先重新設計旋轉時的 BLE 連線狀態管理避免重蹈舊 bug，再決定要不要順便做一版 Android 自己的環形錶／滑頁版面（照搬 iOS 的 `DrivingDynamicsDashboardView`／`GroupPaging`／`RingLegendFieldPickerView`，或維持 Android 現有的指針錶＋格狀清單）。這輪先把這個判斷記錄下來、不擅自動工，等使用者明確決定要不要投入再開始規劃。
+
+### 2026-09-14（第二十九輪：landscape 環形錶儀表板全面移植——使用者貼出 iOS 實際畫面截圖，確認要做）
+
+使用者貼出 iOS 目前的 landscape「座艙模式」實際截圖，明確要求把這個畫面搬到 Android，並在後續訊息追加兩項要求：畫面**只**保留橫式（不要 portrait+landscape 雙向）、側邊卡片要能拖拉排序＋連點兩下開啟參數選擇器（iOS 都已經做了）。這是這個 session 目前規模最大的一輪——完整逐檔案精讀 iOS 的 `DrivingDynamicsDashboardView.swift`／`GaugeMath.swift`／`GroupPaging.swift`／`DashboardDialogs.swift`（`RingLegendFieldPickerView`）／`PersistenceStores.swift`（`RingLegendFieldsStore`），照著同樣的機制、配色、佈局在 Android 上重建，而不是憑截圖臆測畫面細節。
+
+**新增檔案**：
+- `ui/GroupPaging.kt`＋`GroupPagingTest.kt`——把小分組合併成同一頁、大分組獨佔一頁的純函式，逐字對照 iOS 的 `GroupPagingTests.swift` 搬了 5 個測試。
+- `ui/gauge/DesignPalette.kt`——iOS `DesignPalette` enum 的顏色逐一對照搬過來（accent 青色、speedOrange 橘色車速、rpmNormal 紫色轉速、warn/danger 分段變色、背景色）。
+- `ui/gauge/DrivingRingGauge.kt`——雙圈環形錶（外圈車速、內圈轉速），沿用既有 `GaugeMath.valueToAngleDegrees`（Android/iOS 兩邊本來就用同一套角度換算慣例），Canvas 直接畫弧（`drawArc`，比 iOS 手動分段畫路徑的寫法更簡單，Android 原生 API 本來就支援圓角弧線筆畫）；5 秒峰值保持標記（一個指向刻度掃描方向的小三角形箭頭＋數字，數字用 `nativeCanvas`/`Paint` 畫，因為 Compose 的 `DrawScope` 沒有內建文字繪製 API）；中央大數字＋GPS 降級文字/比對行＋使用者自選的兩個中央圖例欄位。
+- `ui/GlassStatCard.kt`——側邊卡片與分頁格線共用的毛玻璃卡片元件，圖示＋數值＋標籤。
+- `ui/DrivingDynamicsDashboardScreen.kt`——整個新畫面：頂部列（連線狀態、品牌/VIN、故障碼角標、選單）、`HorizontalPager` 分頁（第 0 頁是儀表主頁：左右各 4 張自訂欄位卡片＋中央環形錶；其餘頁面是 `GroupPaging` 合併後的參數分組，`LazyVerticalGrid` 3 欄格線）、頁面指示點、新增的「選擇中央顯示參數」2 選 1 對話框（FIFO 淘汰邏輯跟 iOS 一致：選第 3 個會把最早選的那個換掉）。
+- `ui/RingLegendFieldsStore.kt`／`SharedPreferencesRingLegendFieldsStore.kt`——比照 `CustomSectionStore`／`SharedPreferencesCustomSectionStore` 的既有模式，存最多 2 個欄位（用逗號分隔字串存，因為順序有意義，`SharedPreferences` 的 `StringSet` 不保序）。
+
+**改動既有檔案**（把原本 portrait-only 的一些私有元件放寬成可跨檔案重用，避免重複實作）：
+- `DashboardScreen.kt` 的 `iconForField`／`SectionLabel`／`DiagnosticsDialog`／`TroubleCodeDetailDialog`／`DevicePickerDialog`／`EcuSupportTestDialog`／`CustomFieldPickerDialog` 從 `private` 放寬成可見，讓新畫面直接重用，不必重寫一份幾乎一樣的對話框。
+- `DashboardViewModel.kt` 新增 `ringLegendFieldsStore` 建構參數與 `toggleRingLegendField()`（2 槽 FIFO 邏輯）。
+- `ParameterGroups.kt` 新增 `DEFAULT_RING_LEGEND_FIELDS = listOf("coolantTempC", "fuelLevelPercent")`，對應 iOS 的 `defaultRingLegendFields`。
+- `AndroidManifest.xml`／`MainActivity.kt`：`android:screenOrientation` 改成 `"sensorLandscape"`（兩個橫向皆可、依手機實際掛法自動決定，但絕不會是 portrait）——這是使用者第二則訊息明確要求「只留橫式」後才加的；`configChanges` 沿用第二十八輪已經加好的宣告（涵蓋 orientation），確保鎖定橫式不會重踩「旋轉觸發 Activity 重建」的舊坑。`MainActivity` 拿掉原本的 `isLandscape` 條件判斷，永遠渲染 `DrivingDynamicsDashboardScreen`（PiP 模式除外）。
+
+**刪除死碼**：既然 portrait 畫面已經不可能被觸發，原本的 `DashboardScreen()`（整個 portrait 指針錶＋格狀清單版面主函式）連同只有它在用的 `StatusHeader`／`ParameterStatCard` 一併刪除，而不是留著沒人呼叫的程式碼——先用 grep 確認這幾個符號除了自己以外沒有其他呼叫端才刪，並清掉隨之產生的一批不再需要的 import（`TopAppBar`／`Scaffold`／`ExperimentalMaterial3Api`／`Gauge`／`TrendChart`／`GridCells`／`LazyVerticalGrid` 等）。
+
+**拖拉排序（Set→List 資料層搬遷）**：使用者第二則訊息明確要求要拖拉排序，這代表 `selectedCustomFields` 不能再是無序的 `Set<String>`（Android 原本的設計），因為側邊卡片的左右分邊、上下順序現在需要一個穩定、使用者可控的順序才有意義（iOS 一直是 `[String]` 有序陣列）。搬遷範圍：
+- `CustomSectionStore` 介面／`NoOpCustomSectionStore`／`SharedPreferencesCustomSectionStore`：`Set<String>` 全部改 `List<String>`；後者的實際儲存格式從 `putStringSet` 改成逗號分隔字串（原因同 RingLegendFieldsStore：順序有意義，`StringSet` 不保序）——**刻意換了一個新的 SharedPreferences key**（`selected_fields_ordered`，不是沿用舊的 `selected_fields`），因為如果沿用舊 key、用 `getString` 去讀一個曾經用 `putStringSet` 寫入的值，會直接丟 `ClassCastException` 閃退；這支 App 還沒上架，舊資料重置一次是可接受的代價，不值得為了保留舊資料另外寫遷移邏輯。
+- `DashboardUiState.selectedCustomFields`：`Set<String>` → `List<String>`。
+- `DashboardViewModel`：`toggleCustomField()`／`clearAllCustomFields()` 幾乎不用改（Kotlin 的 `List` 也支援 `+`/`-` 運算子，語意剛好符合「新選的欄位加到最後面」），新增 `moveCustomField(field, target)`（搬到 target 前面，複製 iOS `DashboardController.moveCustomField` 的邏輯：兩者相同或任一個不在清單裡就不做事）。
+- `DrivingDynamicsDashboardScreen.kt` 的 `SidePanel`：改成長按後拖曳（`detectDragGesturesAfterLongPress`），卡片跟著手指垂直位移，放開時依照拖曳距離／卡片高度換算出目標位置，只在放開的那一刻呼叫一次 `onMoveCustomField`（不是拖曳過程中連續呼叫）——因為 Compose 穩定版 Foundation API 沒有 SwiftUI `.draggable`/`.dropDestination` 那種系統級手勢，這段是手刻的、Compose 生態系常見的「長按拖曳排序」寫法，不是官方套件。連點兩下開啟參數選擇器（`detectTapGestures(onDoubleTap=...)`）沿用上一輪已經做好的邏輯，跟拖曳手勢用兩個獨立的 `pointerInput` 修飾子疊加在同一張卡片上。
+
+**修正一個實機才會發現的排版 bug**：橫式螢幕在這支測試機上實際高度只有約 360dp（換算自 1080px÷3x 密度），4 張堆疊的側邊卡片原本的尺寸（padding/字體）加起來會超出可用高度，導致最後一張卡片的文字被底部邊界硬生生切掉（截圖親眼看到「行駛里程」被切成「仁馳里程」的殘影）。修法雙管齊下：`GlassStatCard` 的 `compact` 模式縮小 padding/圖示/字體，讓 4 張卡片在大多數機型上不需要捲動就放得下；`SidePanel` 加上 `verticalScroll` 當作保險——就算某些螢幕真的放不下 4 張，也是可以捲動看到，不會再無聲裁切。
+
+**實機驗證**：手機重新連上後完整測試——App 啟動不閃退（此時手機物理上還是直放，`android:screenOrientation="sensorLandscape"` 直接把顯示器強制轉成橫向，證實鎖定確實生效，不需要使用者自己動手轉）；截圖比對跟使用者貼的 iOS 參考圖非常接近：頂部列（掃描狀態／App 名稱／選單）、環形錶（車速數字＋單位＋水溫/油量中央圖例）、左右各 4 張自訂卡片（水溫／油量／電瓶電壓／…、瞬時油耗／平均油耗／行駛里程／…）、底部頁面指示點，排版修正後卡片文字完整不再裁切；`adb` 模擬雙擊（不管是兩次分開的 `input tap` 還是同一個 shell 呼叫裡連續兩次）都沒能觸發參數選擇器開啟，但過程中也沒有任何閃退或錯誤——這比較可能是 `adb shell input tap` 本身對 Compose 雙擊時間窗的模擬不夠精準（這是 adb 腳本化測試手勢的已知限制，不是實機真手指點擊的可靠測試方式），拖曳排序同樣沒有機會用 adb 可靠地模擬。**雙擊開啟選擇器、長按拖曳排序這兩個手勢互動，都還需要使用者親自用手指測試才能真正確認**——這是這一大輪裡目前唯一還沒實機確認的部分。
+
+`testDebugUnitTest`（154 個測試，含新增的 `GroupPagingTest` 5 個＋`movesCustomFieldBeforeTarget` 1 個）／`assembleDebug`／`lintDebug` 全數通過；`DiscouragedApi`（固定方向警告）跟拿掉 portrait 鎖時消失、現在因為鎖 landscape 又出現，是同一類預期中、已經記錄過取捨理由的警告，不是新問題。
+
+**事後修正（同一輪，使用者回報第 4／第 8 張卡片被蓋住）**：上面「修正一個實機才會發現的排版 bug」那段的做法（把 `compact` 卡片的 padding/字體縮小＋幫 `SidePanel` 疊一層 `verticalScroll` 當保險）並沒有真正解決問題——縮小過的固定尺寸還是有可能比這台裝置實際可用的橫式高度大，捲動雖然加了，但使用者實際感受到的是「第 4／第 8 個參數被蓋住」，代表這個修法本質上還是「用猜的常數去對一個測不準的可用空間」，使用者也直接點出「要算一下螢幕大小做適合尺寸計算」。
+
+改成真正用 `BoxWithConstraints` 量測 `SidePanel` 當下實際可用的高度（`maxHeight`），現場算出每張卡片該多高：`cardHeight = (可用高度 - 卡片間距總和) / 卡片數`，並設一個 `MIN_COMPACT_CARD_HEIGHT = 48.dp` 下限（`GlassStatCard` 的 compact 內容——圖示＋數值行＋標籤行——低於這個高度本身就會裁切，不只是排擠鄰居）；只有算出來的理想高度低於這個下限時，才退回捲動（此時卡片維持在下限高度、允許捲動看剩下的），不是像前一版那樣不管算出來多少一律先捲再說。拖曳排序原本用 `onGloballyPositioned` 量測第一張卡片實際渲染高度的做法也一併拿掉——現在卡片高度是算出來的已知值，直接拿來換算拖曳距離對應幾個位置，不需要再等佈局完成才量測。
+
+實機部署驗證：這台裝置（CPH1877，橫式可用高度換算出來對這個版面剛好夠放 4 張卡片不用捲動）左右兩側各 4 張卡片全部完整顯示，先前被蓋住的第 4 張（引擎負載）與第 8 張（外部氣溫）都正常渲染、文字沒有裁切，沒有閃退。`testDebugUnitTest`／`assembleDebug`／`lintDebug` 全過。
+
+**再修一次（同一輪，使用者回報「每個參數的字下半部被截斷了」）**：上面那個「算出精確高度」的版本雖然解決了第 4／第 8 張卡片被蓋住的問題，但引入了一個更細微的新問題——把每張卡片用 `Modifier.height(cardHeight)` 強制壓到算出來的精確高度，而 `MIN_COMPACT_CARD_HEIGHT = 48.dp` 這個下限本身是憑經驗公式估的（字級行高、padding 用概略比例換算），跟這台裝置實際渲染文字需要的真實高度有落差——只要算出來／夾在下限的高度比真實內容需要的矮一點點，`GlassStatCard` 自己的 `.clip(RoundedCornerShape(12.dp))` 就會把超出這個精確框框的文字下緣直接切掉，使用者看到的正是「每個參數的字下半部被截斷」，不是只有第 4／第 8 張，是全部卡片都受影響（因為所有卡片共用同一個算出來、統一偏低的高度）。
+
+修法：徹底放棄「強制卡片為算出來的精確高度」這個做法，改成卡片一律用自己內容的自然大小（不設 `.height()`，拿掉整個 `Modifier.fillMaxSize()` 傳給 `GlassStatCard` 的做法），`SidePanel` 的 `Column` 一律套用 `verticalScroll`（不再用「算出來的高度是否小於可用空間」去決定要不要捲動）——量到的高度現在只拿來估算拖曳排序時「拖了多遠等於移動幾個位置」的粗略比例，不再拿去真的限制卡片的實際版面尺寸。這樣文字永遠用自己真正需要的空間渲染，不會被裁切；代價是原本「剛好不用捲動就看到 4 張」這個好處在某些裝置上可能會需要稍微往下滑一下才能看到第 4 張——但比起讓文字下緣被切掉，這是明顯更好的取捨。
+
+實機驗證：`水溫`／`油量`／`電瓶電壓`／`行駛里程`／`瞬時油耗`／`平均油耗` 等文字都完整無截斷；額外用 `adb shell input swipe` 模擬往上滑的手勢，確認原本捲動到畫面外的第 4 張卡片（引擎負載）真的會捲進來、文字同樣完整——證實這次的兩個修正（不截斷文字＋捲動可以看到全部卡片）同時成立，不是顧此失彼。`testDebugUnitTest`／`assembleDebug`／`lintDebug` 全過，沒有閃退。
+
+### 2026-09-15（第三十輪：追加一輪 iOS commit——8 槽 FIFO 上限、確認死掉的胎壓欄位、給予退避冷卻、語音改成超速警示）
+
+使用者要求「Revise code based on new GitHub push」。拉取新 commit（`d5e8b6f`，"feat(ios): unpin dead TPMS fields, home-screen card delete badge, speed alerts"），逐一核對並搬過來：
+
+1. **自訂欄位上限 8 個、FIFO 淘汰**——`toggleCustomField()` 原本新增欄位時無上限（`current + field`），而畫面只取前 8 個顯示（`pinnedFields.take(8)`）——這代表已經選滿 8 個之後再勾選第 9 個，使用者會看到「勾選了但畫面完全沒反應」，因為新欄位被加到清單尾端、永遠超出顯示範圍。改成新增時如果超過 8 個就把最舊的（`drop(1)`）踢掉，跟 iOS 的 `RingLegendFieldPickerView`（2 槽 FIFO）用同一套邏輯，只是槽位數不同。
+2. **排除確認已死的 4 個輪胎壓力／溫度欄位（8 個實際欄位：前左/右、後左/右各壓力＋溫度）**——iOS 團隊用「查詢胎壓原始值」診斷探測（第二十七輪就是為了這個加的）在真車上實測，確認這 8 個欄位每次查詢都是 NO DATA，這台車（或至少這個底盤世代）沒有裝那個胎壓偵測選配模組，不是位址/公式寫錯。這 8 個欄位本來就已經定義在 `shared/vehicle-profiles/citroen.json`（Android／iOS 共用同一份，都會被輪詢＋出現在挑選器裡）。新增 `UNAVAILABLE_TIRE_FIELDS` 常數：
+   - 從 `relevantFieldsFor()`（自訂區塊／中央圖例的可選清單）裡排除。
+   - 從 `restartBrandPolling()` 實際輪詢的 PID 清單裡排除（沒必要浪費匯流排頻寬問一個確定不會回應的東西）。
+   - **不是把 JSON 定義刪掉**——留著原始定義，只在程式碼層排除，因為換一台真的有裝這個選配的 Berlingo/Citroën 可能就會有回應。
+   - ViewModel 建構時清掉使用者可能已經勾選過的殘留（`cleanedCustomFields`／`cleanedRingLegendFields`，讀出來過濾一次，如果有變動就寫回去持久化），避免這幾張永遠顯示「--」的卡片卡在自訂區塊裡拿不掉。
+3. **`speedKPH`／`rpm`／`mafGramsPerSec` 也從 `relevantFieldsFor()` 排除**——這三個欄位是快速迴圈直接寫進 `vehicleData`／行車電腦狀態，從來不會進到 `standardReadings`/`extraReadings`（也就是自訂區塊／群組頁面實際讀取畫面數字的來源），選進自訂區塊或中央圖例只會永遠顯示「--」——這是先前完全沒注意到、iOS 這輪才發現並修的一個真實的小 bug，Android 一直都有同樣的問題（畢竟本來就允許使用者選 `speedKPH`/`rpm` 進自訂區塊）。
+4. **PID 給棄邏輯改成「冷卻後重試」，不是永久放棄**——原本連續失敗 5 次就整個連線期間永遠不再問這個 PID；改成失敗 5 次後冷卻 `GIVE_UP_COOLDOWN_TURNS = 25` 輪，冷卻期滿後重新給一次機會（如果那次也失敗，要再連續失敗 5 次才會重新觸發冷卻，不是立刻又進入永久放棄狀態）。理由：像檔位這種平常都會回應、只是偶爾在怠速/匯流排短暫安靜時連續問不到的 PID，永久放棄代表整趟車剩下的時間都卡在「--」，即使 ECU 後來又願意回應了也一樣；真的不支援的 PID（例如上面那組胎壓欄位，現在已經直接從輪詢清單排除，不會進到這個機制）大不了偶爾浪費一次重試，換到「假死」永遠不恢復的風險小很多。
+5. **拿掉變檔語音播報，改成超速門檻警示**——iOS 這輪直接把 `gearRaw` 的語音播報整個拿掉（畫面上的 P/R/N 格式化顯示`formatGearDisplay`不受影響，只有語音的部分被移除），换成車速超過 110/120/130 km/h 時各念一次（`announceSpeedIfNeeded`：車速低於最低的門檻(110)時清空「已播報過的門檻」記錄，代表下一次再衝上 110 會重新播報一次；只要沒掉到 110 以下，130 降到 115 途中不會重播 110/120，因為它們早就播過了；一旦真的掉到 110 以下又衝上去，才算一次新的超速）。跟電瓶電壓播報用同一顆 `SpeechAnnouncer`，一樣沒有開關、每次(重新)連線都重置門檻記錄。
+6. **環形錶峰值標記箭頭方向修正**——原本箭頭指向「數值成長的方向」（沿弧線前進的切線方向），iOS 這輪根據實際使用回饋改成指向反方向（沿弧線「來時路」，backward），因為「指向前方」在直覺上容易誤讀成「數值正在往那邊走」而不是「峰值在這裡」；數字標籤位置也從「往前方再拉遠一點」改成「就貼在箭頭底部旁邊」。Android 的 `DrivingRingGauge.kt` 逐一對照修正了向量方向與標籤定位運算式。
+
+**決定暫緩、不在這輪做的部分**：iOS 新增了「長按側邊卡片進入編輯模式、每張卡片右上角冒出一個 × 刪除徽章，點一下就能直接移除、不用開完整的欄位挑選器」（跟 iOS 系統主畫面「搖晃模式」同樣的互動比喻）。Android 上一輪剛做好「長按拖曳排序」（`detectDragGesturesAfterLongPress`），跟這個新的「長按進入編輯模式」在手勢觸發時機上高度重疊（都是同一個長按動作），要在 Compose 上同時穩定地做「長按可能觸發拖曳，也可能觸發編輯模式，鬆手後還要跟雙擊開啟挑選器互不干擾」這三種手勢共存，需要比 SwiftUI 的 `simultaneousGesture` 更小心設計的手勢仲裁邏輯，這輪先不倉促動手，只記錄下來——目前使用者仍然可以透過雙擊卡片開啟完整挑選器來取消勾選，只是少了「一鍵刪除」這個捷徑。
+
+全部改完，連帶修正／新增了對應的單元測試：`formatsAndAnnouncesParkAndReverseGearsSpecially` 拿掉語音斷言、改名 `formatsParkAndReverseGearsSpecially`（畫面格式化本身沒變，只是語音的部分已經不存在了）；`announcesGearChangesButNotTheFirstBaselineReading` 整個換成 `announcesSpeedThresholdCrossingsOncePerExcursion`（鎖住新的超速門檻播報行為，含「降到門檻以下才重新武裝」這個細節）；`stopsPollingStandardExtraPidPermanentlyAfterRepeatedFailures` 改名 `backsOffAfterRepeatedFailuresThenRetriesOnceCooldownElapses`（原本斷言「永遠不會再有新的請求」已經不成立，改成驗證「冷卻期間內沒有新請求、冷卻期滿了之後真的會再試一次」）；新增 `capsCustomFieldsAtEightWithFifoEviction`／`excludesFastLoopAndDeadTireFieldsFromKnownFields`／`cleansStoredDeadTireFieldsOnLoad` 三個新測試，並新增 `FakeRingLegendFieldsStore` 測試替身。`testDebugUnitTest`（157 個測試）／`assembleDebug`／`lintDebug` 全過。手機這輪沒有連線，還沒機會實機驗證這批修正（尤其是超速語音警示，需要真的加速超過門檻才能聽到）。
+
+### 2026-09-14（第二十八輪：使用者要求把橫式支援正式排入範圍——解除旋轉鎖）
+
+使用者明確要求「Add it into scope and develop」。重新檢查根因後發現一個好消息：**上一輪為了 PiP 功能已經在 `AndroidManifest.xml` 加上 `android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|uiMode"`**——這個宣告本來是為了讓進出 PiP 視窗時的尺寸變化不要重建 Activity，但它同時也涵蓋了 `orientation` 這個 config-change 類別。原本鎖 portrait 的理由（旋轉觸發 Activity 重建 → 重跑 `MainActivity`裡的 `LaunchedEffect(Unit) { requestScanOrStart() }` → 對已連線的裝置又呼叫一次 `startScan()` → BLE 連線狀態被弄壞）的根本原因是「Activity 被重建」，而不是「旋轉」這件事本身——只要 Activity 不重建，`LaunchedEffect(Unit)` 就不會重新執行，舊 bug 自然不會發生。既然 `configChanges` 已經宣告好「orientation 變化由 Activity 自己處理、不要重建」，這個根因其實已經被上一輪的 PiP 工作意外解決了，這輪只需要把 `android:screenOrientation="portrait"` 這個鎖拿掉即可。
+
+**決定不做的部分**：沒有跟著做 iOS 那套全新的 landscape-only 環形錶版面（`DrivingDynamicsDashboardView`／`GroupPaging`／`RingLegendFieldPickerView`）——那是一個獨立、規模大很多、需要視覺設計決策的專案。這輪的範圍界定為「讓旋轉安全、不會閃退／弄壞連線」，畫面內容維持現有的指針錶＋格狀清單，在橫式時就讓它在既有的可捲動 `LazyColumn`／`Column` 裡自然重排（螢幕變寬變矮，兩個指針錶可能需要往下捲動才看得到全部，不是為橫式特別優化的版面，但不會壞掉）。已經在 manifest 註解裡把這個範圍界定寫清楚，避免之後誤以為「有做橫式」等於「有做 iOS 那套環形錶」。
+
+修改：拿掉 `<activity>` 的 `android:screenOrientation="portrait"` 屬性，`configChanges` 維持不變（已經涵蓋 orientation）。`lintDebug` 確認 `LockedOrientationActivity`／`DiscouragedApi` 這兩個先前因為鎖 portrait 產生的警告都消失了（警告數從 14 降到 12）。`testDebugUnitTest`／`assembleDebug`／`lintDebug` 全部通過。
+
+手機這輪沒有連線，還沒機會實機測試「真的旋轉手機、確認不閃退、BLE 連線在旋轉後還活著」——這是下一次手機連上時最優先要驗證的項目，因為這正是原本那個 bug 唯一沒辦法用單元測試複現的部分（需要真的觸發一次 config change）。
+
+**實機驗證（同一輪，手機重新連上後）**：部署後請使用者實際把手機轉成橫式一次（`adb` 在這台 ColorOS 機器上被鎖死了 `WRITE_SETTINGS`／`wm user-rotation` 都無法用來模擬旋轉，只能請使用者真的轉）。旋轉前後用 `dumpsys activity activities` 比對 `ActivityRecord` 的識別碼——**旋轉前後完全是同一個 `ActivityRecord{5c4550b ...}`**，證明 Activity 真的沒有被重建，`configChanges` 生效，舊 bug 的根因（重建→重跑 `LaunchedEffect`→重新 `startScan()`）不會發生。`dumpsys window displays` 確認畫面真的變成 `real 2340 x 1080`（橫式），截圖確認畫面內容正確重排（標題列、掃描狀態、雙儀表都正常渲染，儀表因為沒有做橫式專用版面而變得比較大，需要往下捲動才看得到「自訂」區塊，符合這輪範圍界定的預期），旋轉前後 `logcat` 都沒有任何 error/exception/crash。這一輪的橫式支援已經完整驗證，包含最關鍵、單元測試測不到的「真的觸發一次 config change」這一步。

@@ -23,4 +23,18 @@ object ParameterGroups {
     val TRIP_COMPUTER_FIELDS = listOf(
         "instantFuelConsumption", "averageFuelConsumption", "acceleration", "tripDistance", "tripDuration",
     )
+
+    /** Restricted to universal (never brand-specific) fields so it's meaningful on any vehicle.
+     * Only ever consulted by [SharedPreferencesCustomSectionStore] when nothing has been
+     * configured yet — the user can freely add/remove from here afterward, including clearing it
+     * entirely via the picker's "全部移除". */
+    val DEFAULT_CUSTOM_FIELDS = listOf(
+        "coolantTempC", "fuelLevelPercent", "controlModuleVoltage", "engineLoadPercent",
+        "instantFuelConsumption", "averageFuelConsumption", "tripDistance", "ambientAirTempC",
+    )
+
+    /** The driving-dynamics ring gauge's own center legend defaults to 水溫 + 油量 — the two
+     * figures that used to be hardcoded there before it became user-configurable. Only ever
+     * consulted before the user has picked their own pair (see [RingLegendFieldsStore]). */
+    val DEFAULT_RING_LEGEND_FIELDS = listOf("coolantTempC", "fuelLevelPercent")
 }
