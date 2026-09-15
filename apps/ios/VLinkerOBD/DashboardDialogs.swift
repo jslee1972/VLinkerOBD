@@ -330,6 +330,23 @@ struct CustomFieldPickerView: View {
             let grouped = Dictionary(grouping: Array(selectableFields)) { controller.parameterMetadata.groupFor($0) }
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
+                    // Already-pinned fields surfaced as their own section up front, in the same
+                    // order they're pinned on the home screen — so unchecking one the user no
+                    // longer wants doesn't mean hunting for it inside whichever category group it
+                    // happens to belong to below; it's already right here at the top.
+                    if !controller.state.selectedCustomFields.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("已選擇（\(controller.state.selectedCustomFields.count)）")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(DesignPalette.accent)
+                            LazyVGrid(columns: columns, alignment: .leading, spacing: 10) {
+                                ForEach(controller.state.selectedCustomFields, id: \.self) { field in
+                                    fieldRow(field)
+                                }
+                            }
+                        }
+                        Divider()
+                    }
                     ForEach(ParameterGroups.displayOrder, id: \.self) { group in
                         if let fields = grouped[group]?.sorted() {
                             VStack(alignment: .leading, spacing: 8) {
@@ -339,27 +356,7 @@ struct CustomFieldPickerView: View {
                                 // fits roughly twice as many on screen at once.
                                 LazyVGrid(columns: columns, alignment: .leading, spacing: 10) {
                                     ForEach(fields, id: \.self) { field in
-                                        HStack(spacing: 4) {
-                                            Button {
-                                                controller.toggleCustomField(field)
-                                            } label: {
-                                                HStack(spacing: 6) {
-                                                    Image(systemName: controller.state.selectedCustomFields.contains(field) ? "checkmark.square.fill" : "square")
-                                                        .font(.caption)
-                                                    Text(controller.parameterMetadata.displayName(field))
-                                                        .font(.caption)
-                                                        .lineLimit(1)
-                                                        .minimumScaleFactor(0.8)
-                                                }
-                                            }
-                                            .buttonStyle(.plain)
-                                            Spacer(minLength: 0)
-                                            Button { infoField = field } label: {
-                                                Image(systemName: "info.circle")
-                                                    .font(.caption)
-                                            }
-                                            .buttonStyle(.plain)
-                                        }
+                                        fieldRow(field)
                                     }
                                 }
                             }
@@ -381,6 +378,31 @@ struct CustomFieldPickerView: View {
             } message: {
                 Text(infoField.map { controller.parameterMetadata.description($0) } ?? "")
             }
+        }
+    }
+
+    @ViewBuilder
+    private func fieldRow(_ field: String) -> some View {
+        HStack(spacing: 4) {
+            Button {
+                controller.toggleCustomField(field)
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: controller.state.selectedCustomFields.contains(field) ? "checkmark.square.fill" : "square")
+                        .font(.caption)
+                    Text(controller.parameterMetadata.displayName(field))
+                        .font(.caption)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+            }
+            .buttonStyle(.plain)
+            Spacer(minLength: 0)
+            Button { infoField = field } label: {
+                Image(systemName: "info.circle")
+                    .font(.caption)
+            }
+            .buttonStyle(.plain)
         }
     }
 }

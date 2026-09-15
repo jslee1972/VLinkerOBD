@@ -192,7 +192,7 @@ struct DrivingDynamicsDashboardView: View {
 
     private var mainGaugePage: some View {
         HStack(spacing: 0) {
-            sidePanel(fields: leftFields).frame(maxWidth: .infinity)
+            sidePanel(fields: leftFields, isLeftSide: true).frame(maxWidth: .infinity)
 
             DrivingRingGauge(
                 obdSpeedKph: controller.state.vehicleData.speedKph.map(Double.init),
@@ -207,7 +207,7 @@ struct DrivingDynamicsDashboardView: View {
                 withAnimation(.easeOut(duration: 0.2)) { isEditingCustomFields = false }
             }
 
-            sidePanel(fields: rightFields).frame(maxWidth: .infinity)
+            sidePanel(fields: rightFields, isLeftSide: false).frame(maxWidth: .infinity)
         }
         .padding(.vertical, 12)
     }
@@ -224,13 +224,18 @@ struct DrivingDynamicsDashboardView: View {
     private var leftFields: [String] { Array(pinnedFields.prefix(4)) }
     private var rightFields: [String] { Array(pinnedFields.dropFirst(4)) }
 
-    /// Long-press-then-drag to reorder (`.draggable`/`.dropDestination` — the same system gesture
-    /// iOS uses for Home Screen icons: hold, the card lifts, drag it onto another card to swap
-    /// positions), double-tap to jump straight to the field picker instead of going via the "..."
-    /// menu's "編輯自訂參數", and — also Home-Screen-style — the same long-press additionally puts
-    /// every pinned card into an edit state with a delete badge, so a single card can be unpinned
-    /// with one tap without opening the picker sheet at all.
-    private func sidePanel(fields: [String]) -> some View {
+    /// Long-press-then-drag to reorder within a side (`.draggable`/`.dropDestination` — the same
+    /// system gesture iOS uses for Home Screen icons: hold, the card lifts, drag it onto another
+    /// card to swap positions), double-tap to jump straight to the field picker instead of going
+    /// via the "..." menu's "編輯自訂參數", and — also Home-Screen-style — the same long-press
+    /// additionally puts every pinned card into an edit state with a delete badge, so a single
+    /// card can be unpinned with one tap without opening the picker sheet at all. Moving a card
+    /// *between* the left/right panels is a tap on a second, arrow-shaped edit-mode badge instead
+    /// of a drag — the two panels sit either side of the ring gauge inside a `TabView(.page)`, and
+    /// a drag spanning that full width is exactly the kind of wide horizontal pan the TabView's
+    /// own swipe-to-change-page gesture can end up claiming instead of the dragged card, which
+    /// made cross-panel dragging unreliable; a tap has no such gesture-arbitration ambiguity.
+    private func sidePanel(fields: [String], isLeftSide: Bool) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             if fields.isEmpty {
                 Text("點選單「編輯自訂參數」\n新增想觀察的欄位")
@@ -258,6 +263,29 @@ struct DrivingDynamicsDashboardView: View {
                             }
                             .buttonStyle(.plain)
                             .offset(x: -8, y: -8)
+                            .transition(.scale.combined(with: .opacity))
+                        }
+                    }
+                    .overlay(alignment: .topTrailing) {
+                        // A right-panel card can always move left (left always has room/cards
+                        // whenever a right panel card exists at all). A left-panel card can only
+                        // move right once there's an actual right group to move into — with 4 or
+                        // fewer pinned fields total, every field already renders on the left and
+                        // there's nothing to overflow into a right slot, so the arrow would be a
+                        // dead tap.
+                        if isEditingCustomFields, isLeftSide == false || pinnedFields.count > 4 {
+                            Button {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                    controller.moveCustomField(field, toIndex: isLeftSide ? 4 : 3)
+                                }
+                            } label: {
+                                Image(systemName: isLeftSide ? "arrow.right.circle.fill" : "arrow.left.circle.fill")
+                                    .font(.system(size: 20))
+                                    .foregroundStyle(.white, DesignPalette.accent)
+                                    .background(Circle().fill(Color.black).padding(2))
+                            }
+                            .buttonStyle(.plain)
+                            .offset(x: 8, y: -8)
                             .transition(.scale.combined(with: .opacity))
                         }
                     }
@@ -592,15 +620,17 @@ private struct DrivingRingGauge: View {
         }
     }
 
-    /// A small filled triangle riding just outside the ring at `value`'s angle, tip pointing back
-    /// toward the arc, plus the value itself as upright text a bit further out — the 5-second
-    /// peak-hold marker. `context.draw(_:at:)` always draws text upright regardless of the angle
-    /// it's placed at, which is what keeps the number legible all the way around the ring instead
-    /// of ending up sideways or upside-down on the left half of the sweep.
+    /// A small filled triangle straddling the ring itself at `value`'s angle, tip pointing back
+    /// toward the arc, plus the value itself as upright text trailing behind the triangle's own
+    /// tail (its wide base edge) — the 5-second peak-hold marker. `context.draw(_:at:)` always
+    /// draws text upright regardless of the angle it's placed at, which is what keeps the number
+    /// legible all the way around the ring instead of ending up sideways or upside-down on the
+    /// left half of the sweep.
     /// The arrow rides tangent to the ring — pointing the way the fill sweeps as the value grows,
-    /// not out away from the ring — with its number trailing behind it, the way a direction marker
-    /// on a track reads more naturally than a spike sticking straight out.
-    private func drawPeakMarker(ctx: GraphicsContext, center: CGPoint, radius: CGFloat, value: Double, maxValue: Double, color: Color, suffix: String) {
+    /// not out away from the ring — with its number sitting behind the shape (opposite the tip,
+    /// past the base edge), not out past the pointed tip, the way a flag trails behind its pole
+    /// rather than floating beyond the point it's pointing at.
+    private func drawPeakMarker(ctx: GraphicsContext, center: CGPoint, radius: CGFloat, value: Double, maxValue: Double, color: Color, suffix: String, ringWidth: CGFloat) {
         guard value > 0 else { return }
         let deg = angle(for: min(value, maxValue), maxValue: maxValue)
         let rad = deg * .pi / 180
@@ -610,17 +640,23 @@ private struct DrivingRingGauge: View {
         // that "forward" read as pointing where the value is heading, not where the peak sits.
         let radial = CGPoint(x: cos(rad), y: sin(rad))
         let back = CGPoint(x: sin(rad), y: -cos(rad))
-        let markerRadius = radius + 6
-        let base = CGPoint(x: center.x + markerRadius * radial.x, y: center.y + markerRadius * radial.y)
+        // Centered directly on the ring's own stroke (not offset outside it), so the marker
+        // visibly straddles the line at a glance instead of reading as a separate mark floating
+        // just past its edge.
+        let base = CGPoint(x: center.x + radius * radial.x, y: center.y + radius * radial.y)
 
         func offset(_ p: CGPoint, _ v: CGPoint, _ distance: CGFloat) -> CGPoint {
             CGPoint(x: p.x + v.x * distance, y: p.y + v.y * distance)
         }
 
+        // A bit wider than the ring's own stroke so the triangle's base fully spans (and slightly
+        // overhangs) the line it's marking, rather than being narrower than a thick ring like the
+        // rpm one and reading as a thin sliver against it.
+        let halfWidth = ringWidth / 2 + 2
         let tip = offset(base, back, 9)
         let backCenter = offset(base, back, -3)
-        let backLeft = offset(backCenter, radial, 3.5)
-        let backRight = offset(backCenter, radial, -3.5)
+        let backLeft = offset(backCenter, radial, halfWidth)
+        let backRight = offset(backCenter, radial, -halfWidth)
         var arrow = Path()
         arrow.move(to: tip)
         arrow.addLine(to: backLeft)
@@ -628,9 +664,10 @@ private struct DrivingRingGauge: View {
         arrow.closeSubpath()
         ctx.fill(arrow, with: .color(color))
 
-        // Right at the triangle's base (just a small radial nudge so it doesn't sit on top of the
-        // ring stroke) rather than trailing further back along the ring.
-        let labelPoint = offset(backCenter, radial, 11)
+        // On the opposite side from the tip — past the triangle's own wide base edge, in the
+        // forward direction — so the number trails behind the arrow shape itself rather than
+        // sitting out past the point it's pointing at.
+        let labelPoint = offset(backCenter, back, -8)
         let label = ctx.resolve(Text("\(Int(value))\(suffix)").font(.system(size: 11, weight: .bold)).foregroundColor(color))
         ctx.draw(label, at: labelPoint, anchor: .center)
     }
@@ -640,7 +677,7 @@ private struct DrivingRingGauge: View {
         let clamped = min(rpm, maxRpm)
         drawArc(ctx: ctx, center: center, radius: radius, width: 11, fromDeg: startAngle, toDeg: angle(for: clamped, maxValue: maxRpm), color: rpmColor)
         drawTicks(ctx: ctx, center: center, radius: radius, fromDeg: startAngle, toDeg: startAngle + sweepAngle, count: 8) // every 1000 rpm
-        drawPeakMarker(ctx: ctx, center: center, radius: radius, value: rpmPeak, maxValue: maxRpm, color: rpmColor, suffix: "")
+        drawPeakMarker(ctx: ctx, center: center, radius: radius, value: rpmPeak, maxValue: maxRpm, color: rpmColor, suffix: "", ringWidth: 11)
     }
 
     private func drawSpeedRing(ctx: GraphicsContext, center: CGPoint, radius: CGFloat) {
@@ -648,6 +685,6 @@ private struct DrivingRingGauge: View {
         let clamped = min(speedKph, maxSpeed)
         drawArc(ctx: ctx, center: center, radius: radius, width: 7, fromDeg: startAngle, toDeg: angle(for: clamped, maxValue: maxSpeed), color: DesignPalette.speedOrange)
         drawTicks(ctx: ctx, center: center, radius: radius, fromDeg: startAngle, toDeg: startAngle + sweepAngle, count: 11) // every 20 km/h
-        drawPeakMarker(ctx: ctx, center: center, radius: radius, value: speedPeak, maxValue: maxSpeed, color: DesignPalette.speedOrange, suffix: "")
+        drawPeakMarker(ctx: ctx, center: center, radius: radius, value: speedPeak, maxValue: maxSpeed, color: DesignPalette.speedOrange, suffix: "", ringWidth: 7)
     }
 }

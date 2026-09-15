@@ -292,6 +292,24 @@ final class DashboardController: ObservableObject {
         customSectionStore.setSelectedFields(fields)
     }
 
+    /// Repositions `field` to absolute `index` within the persisted order — used by the edit-mode
+    /// "move to the other panel" arrow badge, not by drag-to-reorder (see `moveCustomField(_:before:)`
+    /// for that). The left/right side panels are split purely by array position
+    /// (`pinnedFields.prefix(4)`/`.dropFirst(4)`), and the two panels sit either side of the ring
+    /// gauge inside a `TabView(.page)` — a drag spanning that full width is exactly the kind of
+    /// wide horizontal pan `TabView(.page)`'s own swipe-to-change-page gesture can end up claiming
+    /// instead of the dragged item, which is what made cross-panel dragging unreliable. A tap has
+    /// no such gesture-arbitration ambiguity.
+    func moveCustomField(_ field: String, toIndex index: Int) {
+        var fields = state.selectedCustomFields
+        guard let fromIndex = fields.firstIndex(of: field) else { return }
+        fields.remove(at: fromIndex)
+        let clampedIndex = min(max(index, 0), fields.count)
+        fields.insert(field, at: clampedIndex)
+        state.selectedCustomFields = fields
+        customSectionStore.setSelectedFields(fields)
+    }
+
     /// Clears every pinned custom field at once. Explicitly persists the empty array (rather than
     /// just clearing in-memory state) so `CustomSectionStore.selectedFields()` — which only ever
     /// falls back to the seeded defaults when nothing has been configured *yet* — respects this as
