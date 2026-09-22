@@ -17,6 +17,7 @@ final class DashboardController: ObservableObject {
     private let deviceMemory: DeviceMemory
     private let brandDetector: VehicleBrandDetector
     private let gpsSpeedSource: GpsSpeedSource
+    private let motionDataSource: MotionDataSource
     private let customSectionStore: CustomSectionStore
     private let ringLegendFieldsStore: RingLegendFieldsStore
     let parameterMetadata: ParameterMetadata
@@ -43,9 +44,14 @@ final class DashboardController: ObservableObject {
     private static let minFuelRateForEconomyLph = 0.05
     private static let minFuelForAverageEconomyL = 0.01
     private static let initSequence = ["ATZ", "ATE0", "ATL0", "ATS0", "ATH0", "ATSP0", "ATCFC1", "0100"]
-    /// Spoken once per speeding excursion, not every tick above the line — see
-    /// `announceSpeedIfNeeded`.
+    /// Each speed tier is spoken once when first reached — cruising steadily anywhere in
+    /// [110, 120) or [120, 130) doesn't repeat — see `announceSpeedIfNeeded`.
     private static let speedAnnounceThresholds = [110, 120, 130]
+    /// Speed must drop back under this (not just under the lowest threshold itself) before the
+    /// next climb past 110 counts as a new excursion and re-announces — a several-km/h buffer
+    /// below `speedAnnounceThresholds.first`, not the same value, specifically so hovering right
+    /// at the 110 line (109 → 111 → 109 → ...) doesn't re-arm and re-announce on every tiny dip.
+    private static let speedAnnounceResetKph = 105.0
     /// These three universal fields are read by the dedicated fast loop (`fastLoopTick`), which
     /// writes straight to `state.vehicleData`/trip-computer state — never to `standardReadings`/
     /// `extraReadings`, i.e. never to `liveReadings`. Excluded here from *both* the generic
@@ -65,6 +71,19 @@ final class DashboardController: ObservableObject {
         "tireFrontLeftTempC", "tireFrontRightTempC",
         "tireRearLeftTempC", "tireRearRightTempC",
     ]
+    /// The engine ECU's turbo-boost DIDs (0x22D47E/D48D/D47F), confirmed via 3 real
+    /// diagnostic-scan sessions to all return the same UDS negative response (`7F2231` —
+    /// "requestOutOfRange", the standard NRC for "this ECU doesn't recognize this DID") — an
+    /// active rejection, not silence, so unlike the tyre fields' NO DATA this isn't "maybe an
+    /// unfitted option," it's the ECU explicitly saying these three DIDs don't exist on it.
+    /// Excluded the same way as `unavailableTireFields` — see that property's own doc comment.
+    private static let unavailableTurboFields: Set<String> = [
+        "turboPressureBar", "turboPressureSetpointBar", "turboTempC",
+    ]
+    /// The union actually applied at every exclusion site below — see each field set's own doc
+    /// comment for the evidence behind it. Kept as one combined set so a third confirmed-dead
+    /// group later only needs to be unioned in here, not threaded through every call site again.
+    private static let unavailablePidFields: Set<String> = unavailableTireFields.union(unavailableTurboFields)
 
     // MARK: Ticker jobs
 
@@ -101,12 +120,10 @@ final class DashboardController: ObservableObject {
     /// average look erratic (each reset restarts the average from a tiny, noisy sample) even
     /// though nothing was actually wrong with the fuel-economy math itself.
     private var pendingTripReset = true
-    private var previousSpeedKph: Double?
-    private var previousSpeedSampleDate: Date?
     private let speechAnnouncer = SpeechAnnouncer()
     private var hasAnnouncedBatteryVoltage = false
-    /// Speed thresholds (km/h) already announced since the last time speed dropped back under the
-    /// lowest one — see `announceSpeedIfNeeded`.
+    /// Speed thresholds (km/h) already announced since speed last dropped under
+    /// `speedAnnounceResetKph` — see `announceSpeedIfNeeded`.
     private var announcedSpeedThresholds: Set<Int> = []
     private var lastSpeedKph: Double?
     private var rpmStaleCount = 0
@@ -119,6 +136,7 @@ final class DashboardController: ObservableObject {
         deviceMemory: DeviceMemory = UserDefaultsDeviceMemory(),
         brandDetector: VehicleBrandDetector = .FALLBACK,
         gpsSpeedSource: GpsSpeedSource,
+        motionDataSource: MotionDataSource = MotionDataSource(),
         customSectionStore: CustomSectionStore = UserDefaultsCustomSectionStore(),
         ringLegendFieldsStore: RingLegendFieldsStore = UserDefaultsRingLegendFieldsStore(),
         dtcDescriptions: DtcDescriptions
@@ -130,6 +148,7 @@ final class DashboardController: ObservableObject {
         self.deviceMemory = deviceMemory
         self.brandDetector = brandDetector
         self.gpsSpeedSource = gpsSpeedSource
+        self.motionDataSource = motionDataSource
         self.customSectionStore = customSectionStore
         self.ringLegendFieldsStore = ringLegendFieldsStore
         self.dtcDescriptions = dtcDescriptions
@@ -141,18 +160,18 @@ final class DashboardController: ObservableObject {
 
         state.availableBrands = [universalBrand] + brandProfiles.keys.sorted()
 
-        // Drop any tyre-pressure/temp fields a user pinned before they were confirmed dead
-        // (`unavailableTireFields`) so those cards vanish on next launch instead of sitting there
-        // showing "--" forever until manually unchecked.
+        // Drop any confirmed-dead fields (`unavailablePidFields` — tyre pressure/temp, turbo
+        // boost) a user pinned before they were confirmed dead, so those cards vanish on next
+        // launch instead of sitting there showing "--" forever until manually unchecked.
         let storedCustomFields = customSectionStore.selectedFields()
-        let cleanedCustomFields = storedCustomFields.filter { !Self.unavailableTireFields.contains($0) }
+        let cleanedCustomFields = storedCustomFields.filter { !Self.unavailablePidFields.contains($0) }
         if cleanedCustomFields.count != storedCustomFields.count {
             customSectionStore.setSelectedFields(cleanedCustomFields)
         }
         state.selectedCustomFields = cleanedCustomFields
 
         let storedRingLegendFields = ringLegendFieldsStore.fields()
-        let cleanedRingLegendFields = storedRingLegendFields.filter { !Self.unavailableTireFields.contains($0) }
+        let cleanedRingLegendFields = storedRingLegendFields.filter { !Self.unavailablePidFields.contains($0) }
         if cleanedRingLegendFields.count != storedRingLegendFields.count {
             ringLegendFieldsStore.setFields(cleanedRingLegendFields)
         }
@@ -161,6 +180,38 @@ final class DashboardController: ObservableObject {
         wireBleCallbacks()
         gpsSpeedSource.onSpeedChange = { [weak self] speed in
             self?.state.gpsSpeedKph = speed
+        }
+        gpsSpeedSource.onCourseChange = { [weak self] course in
+            self?.state.gpsCourseDegrees = course
+        }
+        gpsSpeedSource.onAltitudeChange = { [weak self] altitude in
+            guard let self else { return }
+            guard let altitude else {
+                self.state.standardReadings["altitudeM"] = nil
+                return
+            }
+            self.state.standardReadings["altitudeM"] = String(format: "%.0f 公尺", altitude)
+        }
+        gpsSpeedSource.onHorizontalAccuracyChange = { [weak self] accuracy in
+            guard let self else { return }
+            guard let accuracy else {
+                self.state.standardReadings["gpsAccuracyM"] = nil
+                return
+            }
+            self.state.standardReadings["gpsAccuracyM"] = String(format: "±%.0f 公尺", accuracy)
+        }
+        motionDataSource.onRollDegreesChange = { [weak self] roll in
+            self?.state.vehicleRollDegrees = roll
+        }
+        // Backs the "加速度" (acceleration) reading — see `MotionDataSource`'s own doc comment for
+        // why this replaced the old OBD speed-delta estimate.
+        motionDataSource.onCombinedGForceChange = { [weak self] g in
+            guard let self else { return }
+            guard let g else {
+                self.state.standardReadings["acceleration"] = nil
+                return
+            }
+            self.state.standardReadings["acceleration"] = String(format: "%.2f G", g)
         }
     }
 
@@ -171,12 +222,13 @@ final class DashboardController: ObservableObject {
     var relevantFieldsForCurrentVehicle: [String] {
         var fields = Set(universalProfile.pids.map(\.field))
         fields.formUnion(ParameterGroups.tripComputerFields)
+        fields.formUnion(ParameterGroups.phoneSensorFields)
         if state.selectedBrand != universalBrand, let profile = brandProfiles[state.selectedBrand] {
             fields.formUnion(profile.pids.map(\.field))
             fields.formUnion(profile.models.flatMap { $0.pids.map(\.field) })
         }
         fields.subtract(Self.fastLoopExclusiveFields)
-        fields.subtract(Self.unavailableTireFields)
+        fields.subtract(Self.unavailablePidFields)
         return Array(fields).sorted()
     }
 
@@ -272,8 +324,19 @@ final class DashboardController: ObservableObject {
     }
     func clearLogs() { state.logs = [] }
 
-    func startGpsTracking() { gpsSpeedSource.start() }
-    func stopGpsTracking() { gpsSpeedSource.stop() }
+    /// Starts both phone-native data sources together — GPS (speed fallback, heading, altitude)
+    /// and CoreMotion (G-force, body roll). Neither needs an OBD connection at all, so both share
+    /// the same lifecycle as the location permission flow (`ContentView`'s `onAppear`/
+    /// `scenePhase`), independent of whether the vehicle is connected.
+    func startGpsTracking() {
+        gpsSpeedSource.start()
+        motionDataSource.start()
+    }
+
+    func stopGpsTracking() {
+        gpsSpeedSource.stop()
+        motionDataSource.stop()
+    }
 
     /// Toggles `field` in the side-panel custom section. Deselecting always just removes it;
     /// selecting beyond the 8 pinned-card slots bumps the oldest field out (FIFO) instead of
@@ -505,10 +568,7 @@ final class DashboardController: ObservableObject {
             // driving) until the new trip caught up to those thresholds.
             state.standardReadings["averageFuelConsumption"] = nil
             state.standardReadings["instantFuelConsumption"] = nil
-            state.standardReadings["acceleration"] = nil
         }
-        previousSpeedKph = nil
-        previousSpeedSampleDate = nil
         lastSpeedKph = nil
         rpmStaleCount = 0
         speedStaleCount = 0
@@ -574,25 +634,23 @@ final class DashboardController: ObservableObject {
         }
 
         // `speedKph` (state.effectiveSpeedKph — OBD, falling back to GPS) drives distance/fuel so
-        // 行駛里程/平均油耗 keep accumulating through an OBD signal gap instead of freezing; the
-        // separate `obdSpeedKph` (lastSpeedKph — OBD only, nil during that same gap) is what
-        // acceleration is computed from, so the two consecutive samples it diffs are never a
-        // stale OBD reading against a live GPS one — that mismatch alone (the two sources
-        // routinely disagree by a few km/h) was enough to read as a spurious hard-braking spike
-        // the instant the fallback kicked in or cleared.
-        updateTripComputer(speedKph: state.effectiveSpeedKph, obdSpeedKph: lastSpeedKph, mafGramsPerSec: mafGramsPerSec, accumulateMotion: !fastLoopPaused)
+        // 行駛里程/平均油耗 keep accumulating through an OBD signal gap instead of freezing.
+        // Acceleration ("加速度") is no longer computed here at all — it's `MotionDataSource`'s
+        // combined accelerometer G-force now, wired directly in `init`, independent of both speed
+        // sources and this tick entirely.
+        updateTripComputer(speedKph: state.effectiveSpeedKph, mafGramsPerSec: mafGramsPerSec, accumulateMotion: !fastLoopPaused)
     }
 
     /// Estimates fuel economy from MAF (mode 01 PID `$10`), not any vehicle-reported economy PID
     /// — always an approximation (stoichiometric AFR 14.7:1, gasoline density 750 g/L, no diesel
     /// adjustment). Trip *duration* is wall-clock (`tripStartDate` to now) so it reads correctly
     /// even after the fast loop was suspended for a while (iOS backgrounding — see `tripStartDate`).
-    /// Distance/fuel/acceleration are still skipped while paused (manual command, ECU test) so a
-    /// stale frozen speed doesn't fabricate movement, and they're integrated per-tick (assuming a
-    /// steady `pollIntervalMs` cadence) rather than wall-clock, which is correct while the loop is
+    /// Distance/fuel are still skipped while paused (manual command, ECU test) so a stale frozen
+    /// speed doesn't fabricate movement, and they're integrated per-tick (assuming a steady
+    /// `pollIntervalMs` cadence) rather than wall-clock, which is correct while the loop is
     /// actually ticking — after a background gap there's simply no speed/MAF sample for the time
     /// that was missed, so that distance is honestly left untracked rather than guessed at.
-    private func updateTripComputer(speedKph: Double?, obdSpeedKph: Double?, mafGramsPerSec: Double?, accumulateMotion: Bool) {
+    private func updateTripComputer(speedKph: Double?, mafGramsPerSec: Double?, accumulateMotion: Bool) {
         let tickHours = (Double(Self.pollIntervalMs) / 1000.0) / 3600.0
         let elapsedSeconds = tripStartDate.map { Date().timeIntervalSince($0) } ?? 0
         state.standardReadings["tripDuration"] = String(format: "%.1f 分鐘", elapsedSeconds / 60.0)
@@ -628,25 +686,6 @@ final class DashboardController: ObservableObject {
             }
         }
 
-        // Deliberately diffs `obdSpeedKph` (OBD only), not the GPS-fallback `speedKph` above — the
-        // two sources routinely disagree by a few km/h, and dividing that offset by a small dt
-        // (~0.2s) the instant the fallback kicks in or clears would read as a spurious hard-brake/
-        // acceleration spike. Real elapsed time since the last sample, not an assumed fixed
-        // pollIntervalMs, since the very next tick after a background gap could be minutes after
-        // "previousSpeedKph" was captured, and dividing a real speed change by an assumed 0.2s
-        // would spike to a nonsense reading the same way.
-        let now = Date()
-        if let previous = previousSpeedKph, let obdSpeedKph, let previousDate = previousSpeedSampleDate {
-            let dt = now.timeIntervalSince(previousDate)
-            if dt > 0 && dt < 2.0 {
-                let deltaMps = (obdSpeedKph - previous) / 3.6
-                let acceleration = deltaMps / dt
-                state.standardReadings["acceleration"] = String(format: "%.2f 米/秒²", acceleration)
-            }
-        }
-        previousSpeedKph = obdSpeedKph
-        previousSpeedSampleDate = now
-
         state.standardReadings["tripDistance"] = String(format: "%.2f 公里", tripDistanceKm)
     }
 
@@ -676,7 +715,7 @@ final class DashboardController: ObservableObject {
                 if copy.ecuHeader == nil { copy.ecuHeader = model.ecuHeader }
                 return copy
             }
-        }).filter { !Self.unavailableTireFields.contains($0.field) }
+        }).filter { !Self.unavailablePidFields.contains($0.field) }
         let slow = allPids.filter { !$0.fastPoll }
         let fast = allPids.filter { $0.fastPoll }
         brandPollingJob = launchPidTicker(pids: slow, intervalMs: Self.brandPollIntervalMs, isBrand: true)
@@ -796,21 +835,23 @@ final class DashboardController: ObservableObject {
         }
     }
 
-    /// Speaks once per threshold the first time speed reaches it, not on every tick spent above
-    /// it — otherwise cruising at 125 km/h would repeat "車速已達 120 公里" every poll. All
-    /// thresholds re-arm together only once speed drops back under the lowest one (110), so a
-    /// single speeding excursion that peaks at 130 and eases back to 115 doesn't re-announce 110
-    /// or 120 on the way down, but a genuinely new excursion after slowing back into normal traffic
-    /// does.
+    /// Speaks once per tier the first time speed reaches it, not on every tick spent above it —
+    /// cruising steadily anywhere within [110, 120) only announces once, not every few seconds.
+    /// Re-arming needs speed to drop back under `speedAnnounceResetKph` (105), a real buffer below
+    /// the lowest tier itself (110) rather than that same value — hovering right at the line
+    /// (109 → 111 → 109 → ...) used to re-announce "110" on every single crossing back over it;
+    /// requiring a genuine drop below 105 to re-arm means small jitter around 110 no longer
+    /// re-triggers, while a real slow-down out of the tier still does. Speaks just the number, not
+    /// threshold wording, so climbing an actual tier (110 → 120 → 130) reads as a useful update
+    /// each time rather than repeating a fixed phrase.
     private func announceSpeedIfNeeded(_ speedKph: Double) {
-        guard let lowest = Self.speedAnnounceThresholds.first else { return }
-        if speedKph < Double(lowest) {
+        if speedKph < Self.speedAnnounceResetKph {
             announcedSpeedThresholds.removeAll()
             return
         }
         for threshold in Self.speedAnnounceThresholds where speedKph >= Double(threshold) {
             if announcedSpeedThresholds.insert(threshold).inserted {
-                speechAnnouncer.speak("車速已達每小時 \(threshold) 公里")
+                speechAnnouncer.speak("時速 \(Int(speedKph))")
             }
         }
     }

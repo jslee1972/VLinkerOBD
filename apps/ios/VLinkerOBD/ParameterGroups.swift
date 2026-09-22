@@ -12,13 +12,28 @@ enum ParameterGroups {
     static let fuelEmissions = "燃油與排放"
     static let electrical = "電力與診斷"
     static let brandSpecific = "廠牌專屬"
+    /// Fields the phone itself produces (currently just GPS altitude — accelerometer G-force
+    /// now feeds the existing "acceleration" trip-computer field instead of its own group, see
+    /// `phoneSensorFields`'s own doc comment) — no OBD PID backs any of these at all, unlike every
+    /// other group here.
+    static let phoneSensor = "手機感測器"
 
     /// Render order for the sections — trip computer and engine first as the most driving-relevant.
-    static let displayOrder = [tripComputer, engine, temperature, pressure, fuelEmissions, electrical, brandSpecific]
+    static let displayOrder = [tripComputer, phoneSensor, engine, temperature, pressure, fuelEmissions, electrical, brandSpecific]
 
     /// The derived (non-PID) fields the trip computer produces — also needed by the custom-section
-    /// field picker's "known fields" list.
+    /// field picker's "known fields" list. `acceleration` is CoreMotion-sourced (combined G-force,
+    /// see `MotionDataSource`), not OBD-derived like the rest of this group, but stays grouped and
+    /// named the same as before that change — it's still conceptually a trip-computer reading, and
+    /// moving/renaming it would only have meant re-pinning it for anyone who already had it saved.
     static let tripComputerFields = ["instantFuelConsumption", "averageFuelConsumption", "acceleration", "tripDistance", "tripDuration"]
+
+    /// Fields sourced from the phone's own sensors rather than any OBD PID — GPS altitude and GPS
+    /// horizontal accuracy (see `GpsSpeedSource`). Heading (`gpsCourseDegrees`) and body roll
+    /// (`vehicleRollDegrees`) are deliberately *not* in this list: both are fixed UI elements
+    /// placed above/on the ring gauge, not pinnable fields — and the accelerometer G-force feeds
+    /// `tripComputerFields`'s own `acceleration` field instead of living here.
+    static let phoneSensorFields = ["altitudeM", "gpsAccuracyM"]
 
     /// Seeded into the custom section / driving-dynamics side panels the first time the app runs
     /// (before the user has picked anything) — a reasonable "most owners care about this" set,

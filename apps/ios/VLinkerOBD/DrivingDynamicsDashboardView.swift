@@ -194,11 +194,14 @@ struct DrivingDynamicsDashboardView: View {
         HStack(spacing: 0) {
             sidePanel(fields: leftFields, isLeftSide: true).frame(maxWidth: .infinity)
 
-            DrivingRingGauge(
-                obdSpeedKph: controller.state.vehicleData.speedKph.map(Double.init),
-                gpsSpeedKph: controller.state.gpsSpeedKph,
-                rpm: Double(controller.state.vehicleData.rpm ?? 0)
-            )
+            VStack(spacing: 6) {
+                headingAndLevelBar
+                DrivingRingGauge(
+                    obdSpeedKph: controller.state.vehicleData.speedKph.map(Double.init),
+                    gpsSpeedKph: controller.state.gpsSpeedKph,
+                    rpm: Double(controller.state.vehicleData.rpm ?? 0)
+                )
+            }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.vertical, 12)
             .contentShape(Rectangle())
@@ -210,6 +213,44 @@ struct DrivingDynamicsDashboardView: View {
             sidePanel(fields: rightFields, isLeftSide: false).frame(maxWidth: .infinity)
         }
         .padding(.vertical, 12)
+    }
+
+    /// GPS heading (compass direction of travel) centered above the ring, flanked by the
+    /// CoreMotion-derived body-roll indicator (leading) and GPS altitude (trailing) — three
+    /// phone-native readouts, no OBD PID behind any of them. Both dashes ("－－") until GPS/motion
+    /// actually has a fix — e.g. right after connecting, before the phone has moved enough for a
+    /// heading, or with no location fix yet at all.
+    private var headingAndLevelBar: some View {
+        HStack {
+            RollIndicatorView(rollDegrees: controller.state.vehicleRollDegrees)
+                .frame(width: 60, alignment: .leading)
+            Spacer()
+            Text(headingLabel)
+                .font(.subheadline.weight(.semibold).monospacedDigit())
+                .foregroundStyle(.white.opacity(0.75))
+            Spacer()
+            Text(altitudeLabel)
+                .font(.subheadline.weight(.semibold).monospacedDigit())
+                .foregroundStyle(.white.opacity(0.75))
+                .frame(width: 60, alignment: .trailing)
+        }
+        .padding(.horizontal, 22)
+    }
+
+    private var headingLabel: String {
+        guard let course = controller.state.gpsCourseDegrees else { return "－－" }
+        return compassAbbreviation(for: course)
+    }
+
+    private var altitudeLabel: String {
+        controller.state.standardReadings["altitudeM"] ?? "－－"
+    }
+
+    private func compassAbbreviation(for degrees: Float) -> String {
+        let directions = ["北", "東北", "東", "東南", "南", "西南", "西", "西北"]
+        let normalized = degrees.truncatingRemainder(dividingBy: 360)
+        let index = Int((normalized + 22.5) / 45) % 8
+        return directions[max(0, min(7, index))]
     }
 
     /// Capped to 8 (4 per side) — the side panels sit in the same glanceable-while-driving frame
@@ -437,6 +478,35 @@ struct GlassStatCard: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .strokeBorder(.white.opacity(0.08), lineWidth: 1)
         )
+    }
+}
+
+/// A small bubble-level-style gauge for the car's left-right tilt (`MotionDataSource`,
+/// CoreMotion-derived — pitch-invariant regardless of the phone mount's own front-back angle, see
+/// that type's doc comment for the derivation). The tick at 12 o'clock marks "level"; the line
+/// rotates by the measured tilt and turns amber past a steep-enough angle to actually matter.
+/// Sign convention (which way a right-hand tilt rotates the line) hasn't been verified against a
+/// real vehicle — the Simulator has no real accelerometer to check it against at all.
+private struct RollIndicatorView: View {
+    var rollDegrees: Double?
+
+    private static let severeThresholdDegrees = 8.0
+
+    var body: some View {
+        ZStack {
+            Circle().stroke(Color.white.opacity(0.15), lineWidth: 1)
+            Rectangle()
+                .fill(Color.white.opacity(0.35))
+                .frame(width: 1, height: 7)
+                .offset(y: -12)
+            if let rollDegrees {
+                Rectangle()
+                    .fill(abs(rollDegrees) > Self.severeThresholdDegrees ? DesignPalette.warn : DesignPalette.accent)
+                    .frame(width: 24, height: 2.5)
+                    .rotationEffect(.degrees(rollDegrees))
+            }
+        }
+        .frame(width: 30, height: 30)
     }
 }
 

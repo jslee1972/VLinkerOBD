@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		08FBB497261A9FA2E52D8180 /* PidGroupRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B491F1937538A584997CD612 /* PidGroupRepositoryTests.swift */; };
+		0EE629561C20F344538A5EE9 /* MotionDataSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 546D10CE467DBD2A9B9AAC36 /* MotionDataSource.swift */; };
 		1B46F19B75E404EA4FB00C9F /* DtcParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = B70A6C451E7CFA29E05EF522 /* DtcParser.swift */; };
 		235ECD1AAF1FE2CD27FD3B7B /* GaugeMathTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C8746F7739DAF5D2E2E0B14 /* GaugeMathTests.swift */; };
 		33471B694916DA6920B00E73 /* vehicle-profiles in Resources */ = {isa = PBXBuildFile; fileRef = 9ECC54971BA3CBF82F7BDF46 /* vehicle-profiles */; };
@@ -79,6 +80,7 @@
 		4E7FAEAA0A8469772E8DF9EE /* VehicleBrandDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehicleBrandDetector.swift; sourceTree = "<group>"; };
 		51CCA0CEBA8178EEAF7A6F81 /* DrivingDynamicsDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrivingDynamicsDashboardView.swift; sourceTree = "<group>"; };
 		5251DE99871742A89974F9A0 /* OBDBLEManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OBDBLEManager.swift; sourceTree = "<group>"; };
+		546D10CE467DBD2A9B9AAC36 /* MotionDataSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MotionDataSource.swift; sourceTree = "<group>"; };
 		5FA728D80CE134B3DC75CC7B /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		62DE2EF3BCC8F5D046E61603 /* ObdResponseParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ObdResponseParser.swift; sourceTree = "<group>"; };
 		6BB5D11C534349D0582A9BDD /* PidFormula.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PidFormula.swift; sourceTree = "<group>"; };
@@ -156,6 +158,7 @@
 				F480EA0F3F9F15FFF96EC2FF /* GpsSpeedSource.swift */,
 				D5A4BCB05DCC0B7DCE062D47 /* GroupPaging.swift */,
 				03A58ADFA2C5B2AAE45AA48A /* Info.plist */,
+				546D10CE467DBD2A9B9AAC36 /* MotionDataSource.swift */,
 				5251DE99871742A89974F9A0 /* OBDBLEManager.swift */,
 				FB5D6013B78E46338AC34D82 /* ObdCommandQueue.swift */,
 				62DE2EF3BCC8F5D046E61603 /* ObdResponseParser.swift */,
@@ -287,6 +290,7 @@
 				E90FEBFC0565477E9A42CF20 /* GaugeMath.swift in Sources */,
 				F84672DB704954218768D1F6 /* GpsSpeedSource.swift in Sources */,
 				EE502091D23673EF402EE140 /* GroupPaging.swift in Sources */,
+				0EE629561C20F344538A5EE9 /* MotionDataSource.swift in Sources */,
 				A2643B6BAB002F8622995E61 /* OBDBLEManager.swift in Sources */,
 				34A5354EB826D2EF4DBA3DAC /* ObdCommandQueue.swift in Sources */,
 				FF6CCFE6C999A45CAA5DF910 /* ObdResponseParser.swift in Sources */,
@@ -395,7 +399,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.jslee1972.vlinkerobd;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jsleex95.vlinkerobd;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = 1;
 			};
@@ -415,7 +419,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.jslee1972.VLinkerOBDTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jsleex95.VLinkerOBDTests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/VLinkerOBD.app/VLinkerOBD";
@@ -498,7 +502,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.jslee1972.vlinkerobd;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jsleex95.vlinkerobd;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = 1;
 			};
@@ -518,7 +522,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.jslee1972.VLinkerOBDTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jsleex95.VLinkerOBDTests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/VLinkerOBD.app/VLinkerOBD";

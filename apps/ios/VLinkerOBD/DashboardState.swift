@@ -50,6 +50,14 @@ struct DashboardState {
     var isTestingEcu: Bool = false
     /// Phone GPS-derived speed (km/h), shown alongside the OBD-reported speed for comparison.
     var gpsSpeedKph: Float?
+    /// True compass heading of travel (0–360°, GPS-derived) — shown above the ring gauge. Not a
+    /// pinnable field like the other phone-sensor readings (see `ParameterGroups.phoneSensor`)
+    /// since it's a fixed part of that layout, not something to add/remove.
+    var gpsCourseDegrees: Float?
+    /// The car's own left-right tilt in degrees (CoreMotion-derived, see `MotionDataSource`) — the
+    /// "車身水平線" level indicator's input. Same "fixed UI element, not a pinnable field" note as
+    /// `gpsCourseDegrees` above.
+    var vehicleRollDegrees: Double?
     /// Fields the user pinned into the dashboard's own custom section, in display order (an
     /// ordered array, not a set, so the side panels' drag-to-reorder has a position to persist).
     var selectedCustomFields: [String] = []
