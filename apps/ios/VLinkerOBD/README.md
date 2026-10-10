@@ -38,3 +38,11 @@ ATSP0
 ```
 
 接著輪詢 `010D`。例如 `41 0D 3C` = 60 km/h。
+
+## TestFlight 發佈
+
+- App Store Connect App：平安行車通（`com.jsleex95.vlinkerobd`），Team `XCPWAGG47J`。
+- Xcode Cloud workflow `Default`：`main` 有檔案變更時自動 Archive，並部署到 TestFlight（內部測試群組「內部測試」）。
+- 出口合規已在 `project.yml` 以 `ITSAppUsesNonExemptEncryption: false` 宣告。
+- 修改 `project.yml` 後需執行 `xcodegen generate`，並一併提交 `VLinkerOBD.xcodeproj`（Xcode Cloud 直接使用已提交的專案）。
+- 版本號 `CFBundleShortVersionString` 在 `Info.plist`；build 編號由 Xcode Cloud 自動遞增。
