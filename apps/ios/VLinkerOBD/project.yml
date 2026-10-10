@@ -17,6 +17,7 @@ targets:
         excludes:
           - "README.md"
           - "project.yml"
+          - "VLinkerOBD.xcodeproj/**"
           - "Resources/**"
           - "Tests/**"
       # Folder references (not groups) so shared/vehicle-profiles' directory layout survives into
@@ -35,6 +36,8 @@ targets:
         # target/product name ("VLinkerOBD"), which stays as-is since it's just an internal
         # identifier, not user-facing.
         CFBundleDisplayName: "平安行車通"
+        # No custom/non-exempt encryption (BLE + local data only) — skips the export-compliance prompt on every TestFlight upload.
+        ITSAppUsesNonExemptEncryption: false
         UILaunchScreen: {}
         # Landscape-only — 行車通 has one dashboard, meant to sit on a dash mount, not be held
         # portrait. `OrientationLock`/`AppDelegate` is what actually enforces this at runtime; this
