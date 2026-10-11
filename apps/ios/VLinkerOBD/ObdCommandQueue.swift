@@ -2,6 +2,7 @@ import Foundation
 
 /// A byte-stream transport an `ObdCommandQueue` can write to and receive decoded text chunks
 /// from. `OBDBLEManager` implements this over CoreBluetooth.
+@MainActor
 protocol ObdTransport: AnyObject {
     /// Set once by the queue; called with each decoded text chunk as it arrives.
     var onIncoming: ((String) -> Void)? { get set }

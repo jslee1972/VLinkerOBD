@@ -886,3 +886,75 @@ final class DashboardController: ObservableObject {
         return value
     }
 }
+
+#if DEBUG
+/// Sample data for App Store screenshots only — compiled out of Release builds entirely. Fills the
+/// real dashboard with plausible mid-drive values (the simulator has no OBD adapter), then the
+/// real views render it, so screenshots show the real UI rather than a mock-up. Triggered by the
+/// `-demoScreen <name>` launch argument (see `DrivingDynamicsDashboardView.applyDemoLaunchArguments`).
+extension DashboardController {
+    func loadDemoData(screen: String) {
+        state.connectionLabel = "已連線"
+        state.isReady = true
+        state.isScanning = false
+        state.errorMessage = nil
+        state.connectedDeviceName = "vLinkerBLE"
+        state.troubleCodes = screen == "dtc" ? ["P0420", "P0171"] : []
+        state.gpsSpeedKph = 86
+        state.gpsCourseDegrees = 52
+        state.vehicleRollDegrees = 1.6
+
+        let units = Dictionary(universalProfile.pids.map { ($0.field, $0.unit) }, uniquingKeysWith: { first, _ in first })
+        func reading(_ field: String, _ value: Double, unit: String? = nil) -> String {
+            Self.formatReading(field: field, value: value, unit: unit ?? units[field] ?? "")
+        }
+
+        let standard: [String: String] = [
+            "coolantTempC": reading("coolantTempC", 90),
+            "fuelLevelPercent": reading("fuelLevelPercent", 64),
+            "controlModuleVoltage": reading("controlModuleVoltage", 14.1),
+            "engineLoadPercent": reading("engineLoadPercent", 38.4),
+            "intakeAirTempC": reading("intakeAirTempC", 34),
+            "ambientAirTempC": reading("ambientAirTempC", 27),
+            "intakeManifoldPressureKPA": reading("intakeManifoldPressureKPA", 128),
+            "barometricPressureKPA": reading("barometricPressureKPA", 101),
+            "runtimeSinceStartSec": reading("runtimeSinceStartSec", 1860),
+            "timingAdvanceDegrees": reading("timingAdvanceDegrees", 12),
+            "instantFuelConsumption": String(format: "%.1f 公里/公升", 18.2),
+            "averageFuelConsumption": String(format: "%.1f 公里/公升", 16.4),
+            "tripDistance": String(format: "%.2f 公里", 71.4),
+            "tripDuration": String(format: "%.1f 分鐘", 94.0),
+            "acceleration": String(format: "%.2f G", 0.08),
+            "altitudeM": String(format: "%.0f 公尺", 36.0),
+            "gpsAccuracyM": String(format: "±%.0f 公尺", 5.0),
+        ]
+        state.standardReadings = standard
+        state.extraReadings = [
+            "gearRaw": reading("gearRaw", 6, unit: ""),
+            "oilPressureBar": reading("oilPressureBar", 3.1, unit: "bar"),
+            "mapPressureBar": reading("mapPressureBar", 1.35, unit: "bar"),
+            "engineTorqueNm": reading("engineTorqueNm", 118, unit: "Nm"),
+        ]
+
+        if screen == "picker" {
+            state.ringLegendFields = ["averageFuelConsumption", "altitudeM"]
+        }
+        if screen == "console" {
+            state.rawResponse = "41 0C 1A F8"
+            state.logs = []
+            appendLog("發現：vLinkerBLE RSSI=-48")
+            appendLog("連線中：vLinkerBLE")
+            appendLog("GATT 服務探索完成")
+            appendLog("初始化完成，開始讀取車輛資料")
+            appendLog("偵測到車身號碼（VIN）")
+        }
+
+        // Peak-hold markers only show once speed/RPM have come back down from a higher value.
+        state.vehicleData = VehicleData(speedKph: 96, rpm: 2450)
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(900))
+            self?.state.vehicleData = VehicleData(speedKph: 87, rpm: 2100)
+        }
+    }
+}
+#endif

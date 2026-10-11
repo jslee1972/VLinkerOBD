@@ -70,8 +70,10 @@ final class FloatingSpeedPiPController: NSObject, ObservableObject {
 
         frameCount = 0
         renderTimer?.invalidate()
+        // The timer's closure is nonisolated; hop explicitly to the main actor for the render call
+        // (`MainActor.assumeIsolated` would be the zero-hop form but needs iOS 17 — target is 16).
         renderTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / Double(frameRate), repeats: true) { [weak self] _ in
-            self?.renderFrame()
+            Task { @MainActor [weak self] in self?.renderFrame() }
         }
         renderFrame() // one immediate frame so PiP doesn't start on a blank layer
         pip.startPictureInPicture()
@@ -194,7 +196,7 @@ final class FloatingSpeedPiPController: NSObject, ObservableObject {
     }
 }
 
-extension FloatingSpeedPiPController: AVPictureInPictureControllerDelegate {
+extension FloatingSpeedPiPController: @preconcurrency AVPictureInPictureControllerDelegate {
     func pictureInPictureControllerDidStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
         teardown()
     }
@@ -215,7 +217,7 @@ extension FloatingSpeedPiPController: AVPictureInPictureControllerDelegate {
 /// This app has no real "playback" to control — speed just keeps updating on its own — so every
 /// transport-control callback here is a no-op stub; PiP requires the protocol be implemented even
 /// when there's nothing to pause, seek, or resize around.
-extension FloatingSpeedPiPController: AVPictureInPictureSampleBufferPlaybackDelegate {
+extension FloatingSpeedPiPController: @preconcurrency AVPictureInPictureSampleBufferPlaybackDelegate {
     func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, setPlaying playing: Bool) {}
 
     func pictureInPictureControllerTimeRangeForPlayback(_ pictureInPictureController: AVPictureInPictureController) -> CMTimeRange {

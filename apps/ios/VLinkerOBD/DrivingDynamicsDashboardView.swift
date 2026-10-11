@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 import UIKit
 
@@ -47,6 +48,9 @@ struct DrivingDynamicsDashboardView: View {
             }
         }
         .preferredColorScheme(.dark)
+        #if DEBUG
+        .onAppear { applyDemoLaunchArguments() }
+        #endif
         // Screen-awake handling lives in `RootView` (unconditional now that this is the app's
         // only screen), not here.
         .sheet(isPresented: $showTroubleCodeDetail) {
@@ -81,6 +85,29 @@ struct DrivingDynamicsDashboardView: View {
             }
         }
     }
+
+    #if DEBUG
+    /// App Store screenshot helper: `-demoScreen main|group|group2|edit|picker|console|dtc` fills the
+    /// dashboard with sample data and opens that screen. Compiled out of Release builds.
+    private func applyDemoLaunchArguments() {
+        let args = ProcessInfo.processInfo.arguments
+        guard let index = args.firstIndex(of: "-demoScreen"), index + 1 < args.count else { return }
+        let screen = args[index + 1]
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.5))
+            controller.loadDemoData(screen: screen)
+            switch screen {
+            case "group": page = 1
+            case "group2": page = 2
+            case "edit": isEditingCustomFields = true
+            case "picker": showRingLegendPicker = true
+            case "console": showDiagnostics = true
+            case "dtc": showTroubleCodeDetail = true
+            default: break
+            }
+        }
+    }
+    #endif
 
     private var dtcBrand: String? {
         controller.state.selectedBrand != universalBrand ? controller.state.selectedBrand : controller.state.detectedBrand

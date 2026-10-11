@@ -4,6 +4,7 @@ import Foundation
 /// What `DashboardController` needs from the BLE layer — scanning, connecting, and a byte
 /// transport once connected (`ObdTransport`). Mirrors Android's `BleObdClient` interface split
 /// from `BleObdManager`'s CoreBluetooth-specific implementation.
+@MainActor
 protocol BleObdClient: ObdTransport {
     var devices: [ScannedBleDevice] { get }
     var onDevicesChange: (([ScannedBleDevice]) -> Void)? { get set }
