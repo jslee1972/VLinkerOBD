@@ -49,9 +49,6 @@ targets:
         NSBluetoothAlwaysUsageDescription: "此 App 需要藍牙連接 OBD-II 車輛轉接器。"
         NSBluetoothPeripheralUsageDescription: "此 App 需要藍牙連接 OBD-II 車輛轉接器。"
         NSLocationWhenInUseUsageDescription: "此 App 使用手機 GPS 顯示車速比對，僅在使用期間讀取定位。"
-        # Only Bluetooth LE to the OBD adapter and on-device processing — no network traffic and no
-        # custom/non-exempt cryptography, so App Store Connect's export-compliance question is "No".
-        ITSAppUsesNonExemptEncryption: false
         # Lets CoreBluetooth keep the vLinker connection (and deliver already-subscribed notify
         # characteristic updates) while the app is backgrounded — screen lock, a phone call, or
         # switching to Maps no longer drops the link outright. It does NOT guarantee the polling
